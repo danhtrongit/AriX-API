@@ -317,6 +317,7 @@ Chọn 1 trong các ý định sau và trả về ĐÚNG từ khóa:
 - get_stock_news: Hỏi về tin tức, thông tin mới, cập nhật của cổ phiếu
 - get_current_price: Hỏi về giá hiện tại, giá hôm nay
 - get_price_history: Hỏi về lịch sử giá, biến động giá trong khoảng thời gian
+- get_price_chart: Hỏi về biểu đồ giá, chart, đồ thị giá cổ phiếu
 - get_company_info: Hỏi về thông tin công ty, tổng quan doanh nghiệp
 - get_financial_report: Hỏi về báo cáo tài chính, kết quả kinh doanh
 - get_stock_analysis: Hỏi về phân tích, đánh giá, khuyến nghị đầu tư
@@ -331,7 +332,7 @@ Chỉ trả về TỪ KHÓA, không giải thích:
 
             # Validate intent response
             valid_intents = [
-                'get_stock_news', 'get_current_price', 'get_price_history',
+                'get_stock_news', 'get_current_price', 'get_price_history', 'get_price_chart',
                 'get_company_info', 'get_financial_report', 'get_stock_analysis',
                 'compare_stocks', 'general_stock_inquiry'
             ]

@@ -83,6 +83,7 @@ class QueryParser:
 
             # Fallback to pattern matching if AI fails
             symbol_intent_patterns = [
+                ('get_price_chart', ['biểu đồ', 'chart', 'đồ thị', 'biểu đồ giá', 'price chart']),
                 ('get_stock_news', ['tin tức', 'news', 'tin mới', 'thông tin mới', 'cập nhật', 'tin tức mới nhất', 'tin gì', 'có tin', 'tin về', 'thông tin về', 'tin tức về']),
                 ('get_financial_report', ['báo cáo tài chính', 'kết quả kinh doanh', 'tài chính']),
                 ('get_stock_analysis', ['phân tích', 'đánh giá', 'analysis', 'nhận xét']),

@@ -84,6 +84,7 @@ class ChatService:
         query_types = parsed_query.get('query_type', [])
         intent = parsed_query.get('intent', '')
         date_info = parsed_query.get('date_info', {})
+        user_message = parsed_query.get('original_query', '').lower()  # Get original query
 
         # Early check if query is worth processing
         query_assessment = self.query_parser.is_stock_query_worth_processing(parsed_query['original_query'])
@@ -146,8 +147,25 @@ class ChatService:
                     symbol_data['company_info'] = company_info
 
             # Stock price data
-            if ('stock_price' in query_types or intent in ['get_current_price', 'get_price_history', 'get_stock_analysis']):
-                if date_info.get('start_date') and date_info.get('end_date'):
+            if ('stock_price' in query_types or intent in ['get_current_price', 'get_price_history', 'get_price_chart', 'get_stock_analysis']):
+                self.logger.info(f"Processing price data for {symbol}, intent: {intent}, user_message: {user_message}")
+                if intent == 'get_price_chart' or 'biểu đồ' in user_message or 'chart' in user_message:
+                    self.logger.info(f"Chart request detected for {symbol}")
+                    # Chart request - get 30 days historical data by default
+                    from datetime import datetime, timedelta
+                    end_date = datetime.now().strftime('%Y-%m-%d')
+                    start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+
+                    price_data = self.vnstock_client.get_stock_price_history(
+                        symbol, start_date, end_date
+                    )
+                    if price_data and 'error' not in price_data:
+                        # Format data for chart rendering
+                        price_data['chart_type'] = 'candlestick'
+                        price_data['chart_ready'] = True
+                        symbol_data['price_data'] = price_data
+
+                elif date_info.get('start_date') and date_info.get('end_date'):
                     # Historical data requested
                     price_data = self.vnstock_client.get_stock_price_history(
                         symbol,
@@ -158,7 +176,7 @@ class ChatService:
                     # Current price requested (default for most queries)
                     price_data = self.vnstock_client.get_current_price(symbol)
 
-                if price_data and 'error' not in price_data:
+                if price_data and 'error' not in price_data and 'chart_ready' not in price_data:
                     symbol_data['price_data'] = price_data
                     self.logger.info(f"Price data fetched for {symbol}: close={price_data.get('close')}, change={price_data.get('price_change')}")
 
@@ -178,6 +196,7 @@ class ChatService:
         Generate response using Gemini with context data
         """
         intent = parsed_query.get('intent', '')
+        self.logger.info(f"Detected intent: {intent}")
 
         # Special handling for specific intents
         if intent == 'get_stock_analysis' and context_data:

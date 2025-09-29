@@ -7,12 +7,12 @@ class GeminiClient:
     def __init__(self):
         genai.configure(api_key=Config.GEMINI_API_KEY)
 
-        # Use gemini-flash-lite-latest as requested
+        # Use gemini-flash-latest as requested
         try:
-            self.model = genai.GenerativeModel('gemini-flash-lite-latest')
-            print("Successfully initialized with model: gemini-flash-lite-latest")
+            self.model = genai.GenerativeModel('gemini-flash-latest')
+            print("Successfully initialized with model: gemini-flash-latest")
         except Exception as e:
-            print(f"Failed to initialize gemini-flash-lite-latest: {e}")
+            print(f"Failed to initialize gemini-flash-latest: {e}")
             # Fallback to other models
             model_names = [
                 'gemini-pro',
@@ -186,6 +186,12 @@ Chỉ thông tin cốt lõi, không mở rộng thêm."""
 Không sử dụng template cố định. Trả lời tự nhiên, ngắn gọn theo dạng:
 
 VD: "VCB hiện giá 65.700 VND (-0.2%), là ngân hàng lớn nhất. Cổ đông chính là SBV (74.8%). Biến động 1 năm -27.9%."
+
+**ĐẶC BIỆT KHI TRẢ LỜI VỀ TIN TỨC:**
+- Luôn bao gồm link tin tức với format: [Tiêu đề tin](URL) (sử dụng slug của data. chèn thêm base url là 'https://dashboard.iqx.vn/tin-tuc/')
+- Sử dụng 100% tiếng Việt ở điểm số và thông tin đi kèm.
+- Link sẽ tự động mở trong tab mới
+- VD: "Tin tức mới nhất về VCB: [Vietcombank tiên phong đăng ký áp dụng sớm Thông tư 14](https://diendandoanhnghiep.vn/vietcombank-tien-phong-dang-ky-ap-dung-som-thong-tu-14-2025-tt-nhnn-10161134.html)"
 
 Không dùng format:
 - ❌ "### 📊 VCB - Vietcombank"
