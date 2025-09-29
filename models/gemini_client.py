@@ -38,10 +38,10 @@ class GeminiClient:
 
     def generate_response(self, user_message: str, context_data: Optional[Dict] = None) -> str:
         """
-        Generate AI response using Gemini 1.5 Flash with optional context data
+        Generate comprehensive response using natural conversation style
         """
         try:
-            # Build the prompt with context
+            # Use comprehensive prompt for natural conversation
             prompt = self._build_prompt(user_message, context_data)
 
             # Generate response
@@ -53,7 +53,108 @@ class GeminiClient:
             return response.text
 
         except Exception as e:
-            return f"Xin lỗi, đã có lỗi xảy ra khi xử lý yêu cầu của bạn: {str(e)}"
+            return f"Không thể truy vấn dữ liệu: {str(e)}"
+
+    def _build_data_query_prompt(self, user_message: str, context_data: Optional[Dict] = None) -> str:
+        """
+        Build simple data query prompt - concise markdown format
+        """
+        base_prompt = f"""Bạn là Data Query Agent. Nhiệm vụ: TRẢ VỀ THÔNG TIN NGẮN GỌN THEO FORMAT MARKDOWN.
+
+**QUY TẮC:**
+1. CHỈ trả về thông tin CỐT LÕI được hỏi
+2. KHÔNG phân tích, đánh giá, khuyến nghị
+3. KHÔNG bịa thêm thông tin
+4. Format Markdown NGẮN GỌN, chỉ những điểm QUAN TRỌNG
+5. Tối đa 5-7 dòng thông tin
+
+**CÂU HỎI:** {user_message}
+"""
+
+        # Add context data if available
+        if context_data:
+            base_prompt += f"\n**DỮ LIỆU CÓ SẴN:**\n```json\n{json.dumps(context_data, ensure_ascii=False, indent=2)}\n```"
+
+        base_prompt += f"""
+
+**YÊU CẦU:** Trích xuất thông tin theo format Markdown NGẮN GỌN:
+- Sử dụng ## cho tiêu đề chính
+- Sử dụng **bold** cho labels quan trọng
+- CHỈ hiển thị 3-5 thông tin QUAN TRỌNG NHẤT
+- Bỏ qua chi tiết không cần thiết
+- Giữ format gọn gàng, dễ đọc
+
+VÍ DỤ FORMAT MONG MUỐN:
+## VCB
+**Giá:** 65.2 VND (+1.2%)
+**Khối lượng:** 2.1M
+**Cập nhật:** 29/09/2025
+
+Chỉ thông tin cốt lõi, không mở rộng thêm."""
+
+        return base_prompt
+
+    def _is_news_only_query(self, context_data: Optional[Dict] = None) -> bool:
+        """
+        Check if this is a news-only query (has news data but no price/financial data)
+        """
+        if not context_data:
+            return False
+
+        for symbol_data in context_data.values():
+            if isinstance(symbol_data, dict):
+                # Check if has news data but no price_data or financial_reports
+                has_news = 'news' in symbol_data
+                has_price = 'price_data' in symbol_data
+                has_financial = 'financial_reports' in symbol_data
+                has_company_info = 'company_info' in symbol_data
+
+                return has_news and not has_price and not has_financial and not has_company_info
+
+        return False
+
+    def _generate_news_response(self, user_message: str, context_data: Dict) -> str:
+        """
+        Generate focused news response without analysis
+        """
+        try:
+            news_prompt = f"""Bạn là AriX - AI Tin tức Chứng khoán. Trả lời ngắn gọn về tin tức được yêu cầu.
+
+**NGUYÊN TẮC:**
+1. CHỈ tóm tắt tin tức có sẵn
+2. KHÔNG phân tích giá cổ phiếu
+3. KHÔNG đưa ra khuyến nghị đầu tư
+4. KHÔNG bịa thêm thông tin
+
+**DỮ LIỆU TIN TỨC:**
+```json
+{json.dumps(context_data, ensure_ascii=False, indent=2)}
+```
+
+**CÂU HỎI:** {user_message}
+
+**YÊU CẦU:** Tóm tắt 3-4 tin tức chính trong ngày bằng bullet points, mỗi tin 1-2 câu ngắn gọn.
+
+**FORMAT:**
+### 📰 Tin tức [MÃ CỔ PHIẾU]
+
+**Tin tức nổi bật:**
+• [Tiêu đề tin 1]: [Tóm tắt ngắn]
+• [Tiêu đề tin 2]: [Tóm tắt ngắn]
+• [Tiêu đề tin 3]: [Tóm tắt ngắn]
+
+💡 **Nguồn:** IQX News API
+"""
+
+            response = self.model.generate_content(news_prompt)
+
+            # Store conversation history
+            self._update_conversation_history(user_message, response.text)
+
+            return response.text
+
+        except Exception as e:
+            return f"Không thể lấy tin tức: {str(e)}"
 
     def _build_prompt(self, user_message: str, context_data: Optional[Dict] = None) -> str:
         """
@@ -67,41 +168,39 @@ class GeminiClient:
 - Chuyên môn: Phân tích chứng khoán, định giá doanh nghiệp, tư vấn đầu tư
 
 **PHONG CÁCH GIAO TIẾP:**
-- Nghiêm túc, chuyên nghiệp như chuyên gia trong công ty chứng khoán
-- Chuẩn mực, ngắn gọn, đi thẳng vào vấn đề
-- Luôn có số liệu dẫn chứng cụ thể
-- Hạn chế cảm xúc cá nhân, tập trung vào phân tích khách quan
-- Xưng hô: "AriX đánh giá...", "Theo phân tích của AriX...", "AriX khuyến nghị..."
+- Chuyên nghiệp nhưng thân thiện, dễ tiếp cận
+- Khách quan và cân bằng, không thiên vị
+- Trò chuyện tự nhiên, không cứng nhắc hay máy móc
+- Giải thích một cách rõ ràng, dễ hiểu
+- Dựa trên dữ liệu thực tế và logic phân tích
+- Xưng hô: "Tôi đánh giá...", "Theo phân tích của tôi...", "Dựa trên dữ liệu hiện có..."
 
 **NGUYÊN TẮC TRẢ LỜI:**
-1. **Số liệu là cốt lõi**: Luôn dẫn chứng số liệu cụ thể (giá, tỷ lệ, thời gian)
-2. **Phân tích có căn cứ**: Giải thích logic đằng sau mỗi nhận định
-3. **Khách quan tuyệt đối**: Không thiên vị, đưa ra cả ưu và nhược điểm
-4. **Ngắn gọn hiệu quả**: Thông tin cốt lõi trong 2-3 đoạn ngắn
-5. **Định hướng hành động**: Luôn kết thúc bằng khuyến nghị cụ thể
+1. **Ngắn gọn và đúng trọng tâm**: Chỉ trả lời điều được hỏi, không mở rộng
+2. **Thông tin cốt lõi**: Cung cấp dữ liệu quan trọng nhất, bỏ qua chi tiết thừa
+3. **Không phân tích dài dòng**: Tránh giải thích phức tạp hay phân tích sâu
+4. **Không khuyến nghị**: Không đưa ra lời khuyên mua/bán hay định hướng đầu tư
+5. **Trả lời trực tiếp**: Đi thẳng vào vấn đề, không lòng vòng
 
 **FORMAT PHẢN HỒI (Markdown):**
-```
-### 📊 `MÃ CỔ PHIẾU` - Tên Công ty
+Không sử dụng template cố định. Trả lời tự nhiên, ngắn gọn theo dạng:
 
-**Giá hiện tại:** [số] VND (**[+/-]%** 📈📉)
+VD: "VCB hiện giá 65.700 VND (-0.2%), là ngân hàng lớn nhất. Cổ đông chính là SBV (74.8%). Biến động 1 năm -27.9%."
 
-**Đánh giá từ AriX:**
-- ✅ **Khuyến nghị:** [Mua/Nắm giữ/Bán]
-- 📊 **Định giá mục tiêu:** [số] VND
-- 🔍 **Risk-Reward:** [Thấp/Trung bình/Cao]
+Không dùng format:
+- ❌ "### 📊 VCB - Vietcombank"
+- ❌ "**Đánh giá từ AriX:**"
+- ❌ "**Khuyến nghị:** Mua/Bán"
+- ❌ "**Căn cứ phân tích:**"
+- ❌ "> ⚠️ **Lưu ý:**"
 
-**Căn cứ phân tích:**
-1. [Lý do 1 với số liệu]
-2. [Lý do 2 với số liệu]
-3. [Lý do 3 với số liệu]
+**VÍ DỤ PHONG CÁCH NGẮN GỌN:**
+❌ Tránh: "Chào bạn, tôi là AriX. Tôi rất sẵn lòng phân tích VCB... [dài dòng]"
+❌ Tránh: "Về VCB thì có cả mặt tốt và mặt chưa tốt. Định giá hiện tại không quá cao... [phân tích dài]"
 
-> ⚠️ **Lưu ý:** Đầu tư có rủi ro. Quyết định cuối cùng thuộc về nhà đầu tư.
-```
+✅ Ngắn gọn: "VCB hiện giá 65.700 VND (-0.2%), là ngân hàng lớn với SBV sở hữu 74.8%. Biến động 1 năm -27.9%."
 
-**VÍ DỤ PHONG CÁCH:**
-❌ Tránh: "VCB là cổ phiếu tuyệt vời, tôi nghĩ bạn nên mua!"
-✅ Đúng: "AriX đánh giá VCB ở mức Khuyến nghị MUA với mục tiêu 95.000 VND (+8.2%) dựa trên P/E forward 11.2x, ROE 18.5% và tăng trưởng tín dụng 12%."
+✅ Ngắn gọn: "VCB thuộc ngành ngân hàng, niêm yết trên HOSE. Cổ đông lớn là Ngân hàng Nhà nước (74.8%) và Mizuho Bank (15%)."
 
 **LĨNH VỰC CHUYÊN MÔN:**
 - Phân tích cơ bản (Fundamental Analysis)
@@ -110,7 +209,26 @@ class GeminiClient:
 - Đánh giá rủi ro và cơ hội
 - Khuyến nghị đầu tư với mục tiêu giá cụ thể
 
-Luôn nhớ: AriX là chuyên gia phân tích khách quan, không phải salesman."""
+**XỨNG HỢP THIẾU DỮ LIỆU:**
+- Khi không có dữ liệu giá: "AriX không thể truy cập dữ liệu giá hiện tại cho [MÃ] do hạn chế API hoặc thị trường đóng cửa."
+- Không đưa ra giá giả định hoặc ước lượng không có cơ sở
+- Tập trung vào phân tích định tính với thông tin có sẵn
+- Đề xuất thời điểm thích hợp để kiểm tra lại
+
+**NGUYÊN TẮC CHUYÊN NGHIỆP:**
+- Thành thật về hạn chế dữ liệu và không bịa đặt số liệu
+- Đưa ra lời khuyên dựa trên kinh nghiệm thị trường và phân tích khách quan
+- Luôn minh bạch về nguồn thông tin và độ tin cậy
+- Không có lập trường ủng hộ hay phản đối bất kỳ mã nào
+- Tập trung vào việc cung cấp thông tin trung lập để nhà đầu tư tự quyết định
+
+**TINH THẦN PHỤC VỤ:**
+- Trả lời đúng trọng tâm câu hỏi
+- Cung cấp thông tin cần thiết mà không dài dòng
+- Không phân tích hay đưa ra khuyến nghị trừ khi được hỏi cụ thể
+- Tập trung vào dữ liệu thực tế, tránh lý thuyết
+
+Luôn nhớ: Trả lời đúng điều được hỏi."""
 
         # Add context data if available
         context_section = ""
@@ -149,20 +267,27 @@ Luôn nhớ: AriX là chuyên gia phân tích khách quan, không phải salesma
 
     def analyze_stock_data(self, stock_symbol: str, data: Dict) -> str:
         """
-        Specialized method for stock data analysis
+        Extract and present stock data in concise Markdown format
         """
-        analysis_prompt = f"""
-        Hãy phân tích dữ liệu cổ phiếu {stock_symbol} sau đây và đưa ra nhận xét về:
-        1. Xu hướng giá
-        2. Khối lượng giao dịch
-        3. Các chỉ số tài chính quan trọng
-        4. Đánh giá tổng quan và khuyến nghị (nếu có đủ thông tin)
-
-        Dữ liệu: {json.dumps(data, ensure_ascii=False, indent=2)}
-        """
-
         try:
-            response = self.model.generate_content(analysis_prompt)
+            data_prompt = f"""Trích xuất dữ liệu cổ phiếu {stock_symbol} NGẮN GỌN:
+
+**DỮ LIỆU:**
+```json
+{json.dumps(data, ensure_ascii=False, indent=2)}
+```
+
+**YÊU CẦU:** Format Markdown NGẮN GỌN (tối đa 5 dòng):
+
+## {stock_symbol}
+**Giá:** [giá] VND ([thay đổi %])
+**Khối lượng:** [khối lượng]
+**Cập nhật:** [thời gian]
+
+CHỈ thông tin cốt lõi, bỏ qua chi tiết phức tạp.
+"""
+
+            response = self.model.generate_content(data_prompt)
             return response.text
         except Exception as e:
-            return f"Không thể phân tích dữ liệu: {str(e)}"
+            return f"Không thể trích xuất dữ liệu: {str(e)}"

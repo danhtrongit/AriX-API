@@ -32,7 +32,7 @@ def health_check():
     """
     return jsonify({
         'status': 'healthy',
-        'message': 'VNStock AI Chatbot API is running',
+        'message': 'AriX - Phân tích viên độc lập API đang hoạt động',
         'version': '1.0.0'
     })
 
@@ -81,7 +81,7 @@ def chat():
         return jsonify({
             'success': False,
             'error': 'Internal server error',
-            'message': 'Da co loi xay ra. Vui long thu lai sau.'
+            'message': 'AriX tạm thời không thể xử lý yêu cầu. Vui lòng thử lại sau.'
         }), 500
 
 @app.route('/api/stock/<symbol>', methods=['GET'])

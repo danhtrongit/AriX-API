@@ -148,18 +148,19 @@ class ChatService:
             # Stock price data
             if ('stock_price' in query_types or intent in ['get_current_price', 'get_price_history', 'get_stock_analysis']):
                 if date_info.get('start_date') and date_info.get('end_date'):
-                    # Historical data
+                    # Historical data requested
                     price_data = self.vnstock_client.get_stock_price_history(
                         symbol,
                         date_info['start_date'],
                         date_info['end_date']
                     )
                 else:
-                    # Current price
+                    # Current price requested (default for most queries)
                     price_data = self.vnstock_client.get_current_price(symbol)
 
-                if 'error' not in price_data:
+                if price_data and 'error' not in price_data:
                     symbol_data['price_data'] = price_data
+                    self.logger.info(f"Price data fetched for {symbol}: close={price_data.get('close')}, change={price_data.get('price_change')}")
 
             # Financial reports
             if 'financial_reports' in query_types or intent == 'get_financial_report':

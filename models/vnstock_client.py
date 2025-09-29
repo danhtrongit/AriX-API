@@ -238,11 +238,20 @@ class VNStockClient:
 
             # Add timeout and retry logic
             import time
+            from datetime import datetime, timedelta
+
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    # Get latest day data
-                    df = quote.history(period='1D')
+                    # Get latest 3 days data to ensure we get current price
+                    end_date = datetime.now()
+                    start_date = end_date - timedelta(days=3)
+
+                    df = quote.history(
+                        start=start_date.strftime('%Y-%m-%d'),
+                        end=end_date.strftime('%Y-%m-%d'),
+                        interval='1D'
+                    )
                     break
                 except Exception as retry_error:
                     self.logger.warning(f"Attempt {attempt + 1} failed for {symbol}: {retry_error}")
@@ -251,18 +260,39 @@ class VNStockClient:
                     time.sleep(1)  # Wait 1 second before retry
 
             if df is None or df.empty:
-                return {'error': f'No current price data found for symbol {symbol}. Symbol may not exist or market may be closed.'}
+                return {'error': f'Không có dữ liệu giá cho mã {symbol}. Mã có thể không tồn tại hoặc thị trường đang đóng cửa.'}
 
+            # Get the latest row (most recent data)
             latest = df.iloc[-1]
+
             result = {
                 'symbol': symbol,
-                'timestamp': serialize_data(latest.get('time', 'N/A')),
-                'open': serialize_data(latest.get('open', 'N/A')),
-                'high': serialize_data(latest.get('high', 'N/A')),
-                'low': serialize_data(latest.get('low', 'N/A')),
-                'close': serialize_data(latest.get('close', 'N/A')),
-                'volume': serialize_data(latest.get('volume', 'N/A'))
+                'timestamp': serialize_data(latest.name),
+                'open': serialize_data(latest.get('open')),
+                'high': serialize_data(latest.get('high')),
+                'low': serialize_data(latest.get('low')),
+                'close': serialize_data(latest.get('close')),
+                'volume': serialize_data(latest.get('volume')),
+                'source': self.default_source
             }
+
+            # Calculate price change if we have multiple days
+            if len(df) > 1:
+                previous = df.iloc[-2]
+                current_price = latest.get('close', 0)
+                previous_price = previous.get('close', 0)
+
+                if previous_price and current_price:
+                    change = current_price - previous_price
+                    change_percent = (change / previous_price) * 100
+                    result['price_change'] = serialize_data(change)
+                    result['price_change_percent'] = serialize_data(change_percent)
+                else:
+                    result['price_change'] = serialize_data(0)
+                    result['price_change_percent'] = serialize_data(0)
+            else:
+                result['price_change'] = serialize_data(0)
+                result['price_change_percent'] = serialize_data(0)
 
             return result
 

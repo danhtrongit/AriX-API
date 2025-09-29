@@ -301,4 +301,48 @@ class AISymbolDetector:
         Clear the symbol cache
         """
         self.symbol_cache = {'valid': set(), 'invalid': set()}
-        self.logger.info("Symbol cache cleared")
+
+    def classify_query_intent(self, user_message: str, detected_symbols: List[str]) -> str:
+        """
+        Use AI to classify user query intent based on context
+        """
+        try:
+            intent_prompt = f"""
+Phân loại ý định của câu hỏi sau về chứng khoán:
+
+Câu hỏi: "{user_message}"
+Mã cổ phiếu phát hiện: {detected_symbols}
+
+Chọn 1 trong các ý định sau và trả về ĐÚNG từ khóa:
+- get_stock_news: Hỏi về tin tức, thông tin mới, cập nhật của cổ phiếu
+- get_current_price: Hỏi về giá hiện tại, giá hôm nay
+- get_price_history: Hỏi về lịch sử giá, biến động giá trong khoảng thời gian
+- get_company_info: Hỏi về thông tin công ty, tổng quan doanh nghiệp
+- get_financial_report: Hỏi về báo cáo tài chính, kết quả kinh doanh
+- get_stock_analysis: Hỏi về phân tích, đánh giá, khuyến nghị đầu tư
+- compare_stocks: Hỏi về so sánh giữa các cổ phiếu
+- general_stock_inquiry: Câu hỏi chung về chứng khoán
+
+Chỉ trả về TỪ KHÓA, không giải thích:
+"""
+
+            response = self.model.generate_content(intent_prompt)
+            intent = response.text.strip()
+
+            # Validate intent response
+            valid_intents = [
+                'get_stock_news', 'get_current_price', 'get_price_history',
+                'get_company_info', 'get_financial_report', 'get_stock_analysis',
+                'compare_stocks', 'general_stock_inquiry'
+            ]
+
+            if intent in valid_intents:
+                self.logger.info(f"AI classified intent: {intent} for query: {user_message[:50]}...")
+                return intent
+            else:
+                self.logger.warning(f"AI returned invalid intent: {intent}, defaulting to general_stock_inquiry")
+                return 'general_stock_inquiry'
+
+        except Exception as e:
+            self.logger.error(f"Error classifying intent with AI: {e}")
+            return 'general_stock_inquiry'

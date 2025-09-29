@@ -33,7 +33,8 @@ class QueryParser:
             ],
             'news': [
                 'tin tức', 'news', 'tin mới', 'thông tin mới', 'bài viết',
-                'tin tức mới nhất', 'tin gần đây', 'update', 'cập nhật'
+                'tin tức mới nhất', 'tin gần đây', 'update', 'cập nhật',
+                'tin gì', 'có tin', 'tin về', 'thông tin về', 'tin tức về'
             ],
             'analysis': [
                 'phân tích', 'đánh giá', 'analysis', 'nhận xét', 'xu hướng',
@@ -71,13 +72,18 @@ class QueryParser:
 
     def _determine_intent(self, query: str, symbol_analysis: Dict) -> str:
         """
-        Enhanced intent determination using AI symbol analysis
+        Enhanced intent determination using AI classification
         """
-        # If AI detected valid symbols, prioritize stock-related intents
+        # If AI detected valid symbols, use AI to classify intent
         if symbol_analysis['valid_symbols']:
-            # Intent hierarchy for symbol-based queries
+            # Use AI to classify intent based on query context
+            ai_intent = self.ai_detector.classify_query_intent(query, symbol_analysis['valid_symbols'])
+            if ai_intent:
+                return ai_intent
+
+            # Fallback to pattern matching if AI fails
             symbol_intent_patterns = [
-                ('get_stock_news', ['tin tức', 'news', 'tin mới', 'thông tin mới', 'cập nhật', 'tin tức mới nhất']),
+                ('get_stock_news', ['tin tức', 'news', 'tin mới', 'thông tin mới', 'cập nhật', 'tin tức mới nhất', 'tin gì', 'có tin', 'tin về', 'thông tin về', 'tin tức về']),
                 ('get_financial_report', ['báo cáo tài chính', 'kết quả kinh doanh', 'tài chính']),
                 ('get_stock_analysis', ['phân tích', 'đánh giá', 'analysis', 'nhận xét']),
                 ('get_price_history', ['lịch sử giá', 'biến động giá', 'price history']),
@@ -273,8 +279,8 @@ class QueryParser:
             date_info['relative_period'] = f"{number} {unit} {direction}"
             return date_info
 
-        # Default to recent period if no specific date mentioned
-        if any(keyword in query for keyword in ['giá', 'price', 'lịch sử']):
+        # Only add default date range for explicit historical queries
+        if any(keyword in query for keyword in ['lịch sử', 'historical', 'trong', 'từ', 'đến', 'period']):
             date_info.update(self._get_period_dates('tháng này'))
             date_info['period_type'] = 'default_recent'
 

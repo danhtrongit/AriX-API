@@ -1,16 +1,16 @@
-# 🤖 AriX API - Professional Investment Analyst
+# 🤖 AriX API - Phân tích viên độc lập
 
-**AriX** is a sophisticated AI-powered investment analysis API that provides professional stock market insights, financial data analysis, and investment recommendations for the Vietnamese stock market.
+**AriX** là hệ thống phân tích đầu tư độc lập, cung cấp phân tích khách quan dựa trên dữ liệu cho thị trường chứng khoán Việt Nam.
 
-## 🏢 About AriX
+## 🏢 Về AriX
 
-**AriX** (AI Investment Research & eXpert) serves as a professional investment analyst, delivering:
+**AriX** (AI Investment Research & eXpert) hoạt động như nhà phân tích độc lập, cung cấp:
 
-- 📊 **Professional stock analysis** with data-backed insights
-- 📈 **Investment recommendations** with clear rationale
-- 💰 **Price targets** based on fundamental analysis
-- 📰 **News analysis** and market sentiment
-- 🎯 **Risk assessment** and reward evaluation
+- 📊 **Phân tích khách quan** dựa trên dữ liệu thực tế
+- 📈 **Đánh giá đầu tư** có căn cứ rõ ràng
+- 💰 **Định giá mục tiêu** dựa trên phân tích cơ bản
+- 📰 **Phân tích tin tức** và tâm lý thị trường
+- 🎯 **Đánh giá rủi ro** một cách cân bằng
 
 ## 🚀 Features
 
