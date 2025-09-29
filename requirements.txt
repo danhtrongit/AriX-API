@@ -1,0 +1,30 @@
+# Core Flask dependencies
+Flask==3.0.0
+Flask-CORS==4.0.0
+
+# Google Gemini AI
+google-generativeai==0.8.5
+
+# VNStock for Vietnamese stock market data
+vnstock==1.0.24
+
+# Data processing
+pandas==2.2.0
+numpy==1.26.3
+
+# HTTP requests
+requests==2.31.0
+urllib3==2.1.0
+
+# Date/Time utilities
+python-dateutil==2.8.2
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Production server
+gunicorn==21.2.0
+
+# Testing (optional)
+pytest==7.4.0
+pytest-flask==1.2.0

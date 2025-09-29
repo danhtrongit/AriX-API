@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  arix-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: arix-backend
+    ports:
+      - "5005:5005"
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5005/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - arix-network
+
+networks:
+  arix-network:
+    driver: bridge
