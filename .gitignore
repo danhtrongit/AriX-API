@@ -78,6 +78,7 @@ celerybeat-schedule
 
 # SageMath parsed files
 *.sage.py
+token.json.bak
 
 # Environments
 .env
