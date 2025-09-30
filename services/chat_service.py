@@ -2,6 +2,8 @@ from models.gemini_client import GeminiClient
 from models.vnstock_client import VNStockClient
 from models.iqx_news_client import IQXNewsClient
 from services.query_parser import QueryParser
+from services.query_analyzer import QueryAnalyzer
+from services.data_fetcher import DataFetcher
 from typing import Dict, Optional
 import logging
 
@@ -11,60 +13,62 @@ class ChatService:
         self.vnstock_client = VNStockClient()
         self.iqx_news_client = IQXNewsClient()
         self.query_parser = QueryParser()
+        self.query_analyzer = QueryAnalyzer()
+        self.data_fetcher = DataFetcher()
         self.logger = logging.getLogger(__name__)
 
     def process_message(self, user_message: str, session_id: str = 'default') -> Dict:
         """
-        Process user message and generate appropriate response with AI symbol validation
+        Process user message - 2 bước tối ưu:
+        Bước 1: AI phân tích câu hỏi -> xác định symbols + API calls
+        Bước 2: Fetch data -> AI phân tích toàn bộ dữ liệu -> trả lời
         """
         try:
-            # Parse the user query to understand intent and entities
-            parsed_query = self.query_parser.parse_query(user_message)
-            self.logger.info(f"Parsed query: {parsed_query}")
+            # BƯỚC 1: AI phân tích câu hỏi
+            self.logger.info(f"[Step 1] Analyzing query: {user_message}")
+            analysis = self.query_analyzer.analyze_query(user_message)
 
-            # Check if query has invalid symbols and provide suggestions
-            invalid_symbols = parsed_query.get('invalid_symbols', [])
-            if invalid_symbols:
-                suggestions = self.query_parser.suggest_corrections(user_message)
-                if suggestions['has_suggestions']:
-                    # Generate helpful response with suggestions
-                    suggestion_text = self._format_symbol_suggestions(invalid_symbols, suggestions['symbol_suggestions'])
-                    return {
-                        'success': True,
-                        'response': suggestion_text,
-                        'query_analysis': parsed_query,
-                        'data_sources_used': [],
-                        'session_id': session_id,
-                        'has_symbol_suggestions': True,
-                        'symbol_suggestions': suggestions['symbol_suggestions']
-                    }
-
-            # Get relevant data based on query analysis with AI validation
-            context_data = self._fetch_relevant_data(parsed_query)
-
-            # Handle case where query assessment determined it's not worth processing
-            if context_data is None and not self.query_parser.is_stock_query_worth_processing(user_message)['worth_processing']:
-                # Generate general response without stock data
+            # Kiểm tra nếu không liên quan chứng khoán
+            if analysis['query_intent'] == 'general' and not analysis['symbols']:
                 response = self.gemini_client.generate_response(user_message, None)
                 return {
                     'success': True,
                     'response': response,
-                    'query_analysis': parsed_query,
+                    'query_analysis': analysis,
                     'data_sources_used': [],
                     'session_id': session_id
                 }
 
-            # Generate AI response with context
-            response = self._generate_contextual_response(user_message, parsed_query, context_data)
+            # Fetch dữ liệu dựa trên analysis
+            self.logger.info(f"[Step 1] Analysis result: symbols={analysis['symbols']}, api_calls={len(analysis['api_calls'])}")
 
-            return {
-                'success': True,
-                'response': response,
-                'query_analysis': parsed_query,
-                'data_sources_used': list(context_data.keys()) if context_data else [],
-                'context_data': context_data,
-                'session_id': session_id
-            }
+            # BƯỚC 2: Fetch data và AI phân tích
+            if analysis['api_calls']:
+                self.logger.info(f"[Step 2] Fetching data from {len(analysis['api_calls'])} API calls")
+                fetched_data = self.data_fetcher.fetch_data(analysis['api_calls'])
+
+                # AI phân tích toàn bộ dữ liệu và trả lời
+                self.logger.info(f"[Step 2] AI analyzing fetched data")
+                response = self._generate_ai_response(user_message, analysis, fetched_data)
+
+                return {
+                    'success': True,
+                    'response': response,
+                    'query_analysis': analysis,
+                    'fetched_data': fetched_data,
+                    'data_sources_used': list(fetched_data.keys()),
+                    'session_id': session_id
+                }
+            else:
+                # Không có API calls cần thực hiện
+                response = self.gemini_client.generate_response(user_message, None)
+                return {
+                    'success': True,
+                    'response': response,
+                    'query_analysis': analysis,
+                    'data_sources_used': [],
+                    'session_id': session_id
+                }
 
         except Exception as e:
             self.logger.error(f"Error processing message: {e}")
@@ -74,6 +78,51 @@ class ChatService:
                 'response': 'Xin lỗi, đã có lỗi xảy ra khi xử lý yêu cầu của bạn. Vui lòng thử lại.',
                 'session_id': session_id
             }
+
+    def _generate_ai_response(self, user_query: str, analysis: Dict, fetched_data: Dict) -> str:
+        """
+        AI phân tích toàn bộ dữ liệu và trả lời ngắn gọn, đúng trọng tâm
+        """
+        try:
+            # Build context for AI
+            context_prompt = self._build_context_prompt(user_query, analysis, fetched_data)
+
+            # Generate response
+            response = self.gemini_client.model.generate_content(context_prompt)
+
+            return response.text.strip()
+
+        except Exception as e:
+            self.logger.error(f"Error generating AI response: {e}")
+            return "Xin lỗi, không thể phân tích dữ liệu. Vui lòng thử lại."
+
+    def _build_context_prompt(self, user_query: str, analysis: Dict, fetched_data: Dict) -> str:
+        """
+        Tạo prompt cho AI với toàn bộ dữ liệu
+        """
+        import json
+
+        prompt = f"""Bạn là trợ lý phân tích chứng khoán chuyên nghiệp.
+
+Câu hỏi của người dùng: "{user_query}"
+
+Phân tích câu hỏi:
+- Mã cổ phiếu: {', '.join(analysis.get('symbols', []))}
+- Ý định: {analysis.get('query_intent')}
+
+Dữ liệu đã thu thập:
+{json.dumps(fetched_data, ensure_ascii=False, indent=2)}
+
+Yêu cầu:
+1. Phân tích dữ liệu trên
+2. Trả lời NGẮN GỌN, ĐÚNG TRỌNG TÂM câu hỏi
+3. KHÔNG đưa ra khuyến nghị mua/bán
+4. KHÔNG dài dòng, chỉ trả lời đúng câu hỏi
+5. Sử dụng số liệu cụ thể từ dữ liệu
+
+Trả lời:"""
+
+        return prompt
 
     def _fetch_relevant_data(self, parsed_query: Dict) -> Optional[Dict]:
         """
