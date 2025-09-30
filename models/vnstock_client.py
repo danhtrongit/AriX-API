@@ -1,4 +1,5 @@
 from vnstock import Quote, Company, Finance
+from vnstock_data import Listing, Trading, TopStock, Market, Fund, CommodityPrice, Macro
 from config import Config
 import pandas as pd
 from typing import Dict, Optional, List
@@ -334,3 +335,511 @@ class VNStockClient:
                 results.append(stock)
 
         return results
+
+    # LISTING DATA
+    def get_all_symbols(self) -> Dict:
+        """
+        Lấy danh sách tất cả mã chứng khoán
+        """
+        try:
+            listing = Listing(source='vnd')
+            df = listing.all_symbols()
+            return {
+                'success': True,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting all symbols: {e}")
+            return {'error': str(e)}
+
+    # TRADING DATA
+    def get_price_board(self, symbols: List[str]) -> Dict:
+        """
+        Lấy bảng giá giao dịch của nhiều mã
+        """
+        try:
+            trading = Trading(symbol=symbols[0], source='vci')
+            df = trading.price_board(symbols)
+            return {
+                'success': True,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting price board: {e}")
+            return {'error': str(e)}
+
+    def get_order_stats(self, symbol: str) -> Dict:
+        """
+        Lấy thống kê lệnh đặt mua/bán
+        """
+        try:
+            trading = Trading(symbol=symbol, source='vci')
+            df = trading.order_stats()
+            return {
+                'symbol': symbol,
+                'success': True,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting order stats for {symbol}: {e}")
+            return {'error': str(e)}
+
+    def get_foreign_trade(self, symbol: str) -> Dict:
+        """
+        Lấy dữ liệu giao dịch khối ngoại
+        """
+        try:
+            trading = Trading(symbol=symbol, source='vci')
+            df = trading.foreign_trade()
+            return {
+                'symbol': symbol,
+                'success': True,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting foreign trade for {symbol}: {e}")
+            return {'error': str(e)}
+
+    def get_prop_trade(self, symbol: str) -> Dict:
+        """
+        Lấy dữ liệu giao dịch tự doanh
+        """
+        try:
+            trading = Trading(symbol=symbol, source='vci')
+            df = trading.prop_trade()
+            return {
+                'symbol': symbol,
+                'success': True,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting prop trade for {symbol}: {e}")
+            return {'error': str(e)}
+
+    def get_insider_deal(self, symbol: str) -> Dict:
+        """
+        Lấy dữ liệu giao dịch nội bộ
+        """
+        try:
+            trading = Trading(symbol=symbol, source='vci')
+            df = trading.insider_deal()
+            return {
+                'symbol': symbol,
+                'success': True,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting insider deals for {symbol}: {e}")
+            return {'error': str(e)}
+
+    # TOP STOCK DATA
+    def get_top_gainers(self, index: str = 'VNINDEX', limit: int = 10) -> Dict:
+        """
+        Lấy top mã tăng giá mạnh nhất
+        """
+        try:
+            top = TopStock(source='vci')
+            df = top.gainer(index=index, limit=limit)
+            return {
+                'success': True,
+                'index': index,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting top gainers: {e}")
+            return {'error': str(e)}
+
+    def get_top_losers(self, index: str = 'VNINDEX', limit: int = 10) -> Dict:
+        """
+        Lấy top mã giảm giá mạnh nhất
+        """
+        try:
+            top = TopStock(source='vci')
+            df = top.loser(index=index, limit=limit)
+            return {
+                'success': True,
+                'index': index,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting top losers: {e}")
+            return {'error': str(e)}
+
+    def get_top_by_value(self, index: str = 'VNINDEX', limit: int = 10) -> Dict:
+        """
+        Lấy top mã có giá trị giao dịch lớn nhất
+        """
+        try:
+            top = TopStock(source='vci')
+            df = top.value(index=index, limit=limit)
+            return {
+                'success': True,
+                'index': index,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting top by value: {e}")
+            return {'error': str(e)}
+
+    def get_top_by_volume(self, index: str = 'VNINDEX', limit: int = 10) -> Dict:
+        """
+        Lấy top mã có khối lượng giao dịch lớn nhất
+        """
+        try:
+            top = TopStock(source='vci')
+            df = top.volume(index=index, limit=limit)
+            return {
+                'success': True,
+                'index': index,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting top by volume: {e}")
+            return {'error': str(e)}
+
+    def get_top_foreign_buy(self, date: str = None) -> Dict:
+        """
+        Lấy top mã khối ngoại mua mạnh nhất
+        """
+        try:
+            from datetime import datetime
+            if not date:
+                date = datetime.now().strftime('%Y-%m-%d')
+
+            top = TopStock(source='vci')
+            df = top.foreign_buy(date=date)
+            return {
+                'success': True,
+                'date': date,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting top foreign buy: {e}")
+            return {'error': str(e)}
+
+    def get_top_foreign_sell(self, date: str = None) -> Dict:
+        """
+        Lấy top mã khối ngoại bán mạnh nhất
+        """
+        try:
+            from datetime import datetime
+            if not date:
+                date = datetime.now().strftime('%Y-%m-%d')
+
+            top = TopStock(source='vci')
+            df = top.foreign_sell(date=date)
+            return {
+                'success': True,
+                'date': date,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting top foreign sell: {e}")
+            return {'error': str(e)}
+
+    # MARKET VALUATION
+    def get_market_pe(self, index: str = 'VNINDEX', duration: str = '5Y') -> Dict:
+        """
+        Lấy chỉ số P/E thị trường
+        """
+        try:
+            market = Market(index=index, source='vnd')
+            df = market.pe(duration=duration)
+            return {
+                'success': True,
+                'index': index,
+                'duration': duration,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting market P/E: {e}")
+            return {'error': str(e)}
+
+    def get_market_pb(self, index: str = 'VNINDEX', duration: str = '5Y') -> Dict:
+        """
+        Lấy chỉ số P/B thị trường
+        """
+        try:
+            market = Market(index=index, source='vnd')
+            df = market.pb(duration=duration)
+            return {
+                'success': True,
+                'index': index,
+                'duration': duration,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting market P/B: {e}")
+            return {'error': str(e)}
+
+    def get_market_evaluation(self, index: str = 'VNINDEX', duration: str = '5M') -> Dict:
+        """
+        Lấy chỉ số định giá tổng hợp
+        """
+        try:
+            market = Market(index=index, source='vnd')
+            df = market.evaluation(duration=duration)
+            return {
+                'success': True,
+                'index': index,
+                'duration': duration,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting market evaluation: {e}")
+            return {'error': str(e)}
+
+    # FUND DATA
+    def get_fund_listing(self, fund_type: str = '') -> Dict:
+        """
+        Lấy danh sách quỹ mở
+        fund_type: 'BALANCED', 'BOND', 'STOCK', hoặc '' cho tất cả
+        """
+        try:
+            fund = Fund()
+            df = fund.listing(fund_type=fund_type)
+            return {
+                'success': True,
+                'fund_type': fund_type or 'all',
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting fund listing: {e}")
+            return {'error': str(e)}
+
+    def get_fund_nav(self, symbol: str) -> Dict:
+        """
+        Lấy lịch sử NAV của quỹ
+        """
+        try:
+            fund = Fund()
+            df = fund.details.nav_report(symbol)
+            return {
+                'symbol': symbol,
+                'success': True,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting fund NAV for {symbol}: {e}")
+            return {'error': str(e)}
+
+    def get_fund_top_holding(self, symbol: str) -> Dict:
+        """
+        Lấy danh mục đầu tư top của quỹ
+        """
+        try:
+            fund = Fund()
+            df = fund.details.top_holding(symbol)
+            return {
+                'symbol': symbol,
+                'success': True,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting fund top holding for {symbol}: {e}")
+            return {'error': str(e)}
+
+    def get_fund_industry_holding(self, symbol: str) -> Dict:
+        """
+        Lấy phân bổ ngành của quỹ
+        """
+        try:
+            fund = Fund()
+            df = fund.details.industry_holding(symbol)
+            return {
+                'symbol': symbol,
+                'success': True,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting fund industry holding for {symbol}: {e}")
+            return {'error': str(e)}
+
+    def get_fund_asset_holding(self, symbol: str) -> Dict:
+        """
+        Lấy phân bổ tài sản của quỹ
+        """
+        try:
+            fund = Fund()
+            df = fund.details.asset_holding(symbol)
+            return {
+                'symbol': symbol,
+                'success': True,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting fund asset holding for {symbol}: {e}")
+            return {'error': str(e)}
+
+    # COMMODITY PRICES
+    def get_gold_vn(self, start: str = "2022-01-01", end: str = "2024-12-31") -> Dict:
+        """
+        Lấy giá vàng Việt Nam
+        """
+        try:
+            commodity = CommodityPrice(start=start, end=end, source='spl')
+            df = commodity.gold_vn()
+            return {
+                'success': True,
+                'period': f'{start} to {end}',
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting gold VN prices: {e}")
+            return {'error': str(e)}
+
+    def get_gold_global(self, start: str = "2022-01-01", end: str = "2024-12-31") -> Dict:
+        """
+        Lấy giá vàng thế giới
+        """
+        try:
+            commodity = CommodityPrice(start=start, end=end, source='spl')
+            df = commodity.gold_global()
+            return {
+                'success': True,
+                'period': f'{start} to {end}',
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting gold global prices: {e}")
+            return {'error': str(e)}
+
+    def get_oil_crude(self, start: str = "2022-01-01", end: str = "2024-12-31") -> Dict:
+        """
+        Lấy giá dầu thô
+        """
+        try:
+            commodity = CommodityPrice(start=start, end=end, source='spl')
+            df = commodity.oil_crude()
+            return {
+                'success': True,
+                'period': f'{start} to {end}',
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting crude oil prices: {e}")
+            return {'error': str(e)}
+
+    def get_commodity_price(self, commodity_type: str, start: str = "2022-01-01", end: str = "2024-12-31") -> Dict:
+        """
+        Lấy giá hàng hóa theo loại
+        commodity_type: gas_vn, gas_natural, coke, steel_d10, steel_hrc, iron_ore,
+                       fertilizer_ure, soybean, corn, sugar, pork_north_vn, pork_china
+        """
+        try:
+            commodity = CommodityPrice(start=start, end=end, source='spl')
+
+            method_map = {
+                'gas_vn': commodity.gas_vn,
+                'gas_natural': commodity.gas_natural,
+                'coke': commodity.coke,
+                'steel_d10': commodity.steel_d10,
+                'steel_hrc': commodity.steel_hrc,
+                'iron_ore': commodity.iron_ore,
+                'fertilizer_ure': commodity.fertilizer_ure,
+                'soybean': commodity.soybean,
+                'corn': commodity.corn,
+                'sugar': commodity.sugar,
+                'pork_north_vn': commodity.pork_north_vn,
+                'pork_china': commodity.pork_china
+            }
+
+            if commodity_type not in method_map:
+                return {'error': f'Invalid commodity type: {commodity_type}'}
+
+            df = method_map[commodity_type]()
+            return {
+                'success': True,
+                'commodity': commodity_type,
+                'period': f'{start} to {end}',
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting commodity price for {commodity_type}: {e}")
+            return {'error': str(e)}
+
+    # MACRO DATA
+    def get_gdp(self, start: str = "2015-01", end: str = "2025-04", period: str = "quarter") -> Dict:
+        """
+        Lấy dữ liệu GDP
+        period: 'quarter' hoặc 'year'
+        """
+        try:
+            macro = Macro(source='mbk')
+            df = macro.gdp(start=start, end=end, period=period, keep_label=False)
+            return {
+                'success': True,
+                'period': period,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting GDP data: {e}")
+            return {'error': str(e)}
+
+    def get_cpi(self, start: str = "2015-01", end: str = "2025-04", period: str = "month") -> Dict:
+        """
+        Lấy dữ liệu CPI
+        period: 'month' hoặc 'year'
+        """
+        try:
+            macro = Macro(source='mbk')
+            df = macro.cpi(start=start, end=end, period=period)
+            return {
+                'success': True,
+                'period': period,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting CPI data: {e}")
+            return {'error': str(e)}
+
+    def get_industry_production(self, start: str = "2015-01", end: str = "2025-04", period: str = "month") -> Dict:
+        """
+        Lấy dữ liệu sản xuất công nghiệp
+        period: 'month' hoặc 'year'
+        """
+        try:
+            macro = Macro(source='mbk')
+            df = macro.industry_prod(start=start, end=end, period=period)
+            return {
+                'success': True,
+                'period': period,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting industry production data: {e}")
+            return {'error': str(e)}
+
+    def get_retail(self, start: str = "2015-01", end: str = "2025-04", period: str = "month") -> Dict:
+        """
+        Lấy dữ liệu bán lẻ
+        period: 'month' hoặc 'year'
+        """
+        try:
+            macro = Macro(source='mbk')
+            df = macro.retail(start=start, end=end, period=period)
+            return {
+                'success': True,
+                'period': period,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting retail data: {e}")
+            return {'error': str(e)}
+
+    def get_import_export(self, start: str = "2015-01", end: str = "2025-04", period: str = "month") -> Dict:
+        """
+        Lấy dữ liệu xuất nhập khẩu
+        period: 'month' hoặc 'year'
+        """
+        try:
+            macro = Macro(source='mbk')
+            df = macro.import_export(start=start, end=end, period=period)
+            return {
+                'success': True,
+                'period': period,
+                'data': serialize_data(df.to_dict('records'))
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting import/export data: {e}")
+            return {'error': str(e)}
