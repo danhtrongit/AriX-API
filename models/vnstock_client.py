@@ -1,22 +1,50 @@
-from vnstock import Quote, Company, Finance
-from vnstock_data import Listing, Trading, TopStock, Market, Fund, CommodityPrice, Macro
+# from vnstock import Quote, Company, Finance
+from vnstock_data import Quote, Company, Finance, Listing, Trading, TopStock, Market, Fund, CommodityPrice, Macro
 from config import Config
 import pandas as pd
 from typing import Dict, Optional, List
 import logging
 from utils.json_utils import serialize_data
+import warnings
 
 class VNStockClient:
     def __init__(self):
         self.default_source = Config.VNSTOCK_DEFAULT_SOURCE
         self.logger = logging.getLogger(__name__)
+        # Suppress pandas warnings về duplicate columns
+        warnings.filterwarnings('ignore', message='DataFrame columns are not unique')
+    
+    def _clean_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Clean DataFrame by removing duplicate columns
+        """
+        if df is None or df.empty:
+            return df
+        
+        # Check for duplicate columns and silently remove them
+        if df.columns.duplicated().any():
+            # Keep first occurrence of duplicate columns
+            df = df.loc[:, ~df.columns.duplicated()]
+        
+        return df
+    
+    def _df_to_dict(self, df: pd.DataFrame) -> list:
+        """
+        Safe conversion of DataFrame to dict with duplicate column handling
+        """
+        if df is None or df.empty:
+            return None
+        
+        df = self._clean_dataframe(df)
+        return df.to_dict('records')
 
     def get_company_info(self, symbol: str) -> Dict:
         """
         Get comprehensive company information
         """
         try:
-            company = Company(symbol=symbol, source=self.default_source)
+            # Company class only accepts 'VCI' source
+            company = Company(symbol=symbol, source='VCI')
 
             result = {
                 'symbol': symbol,
@@ -33,45 +61,41 @@ class VNStockClient:
 
             # Get company overview
             try:
-                overview = company.overview()
-                result['overview'] = overview.to_dict('records') if not overview.empty else None
+                overview = self._clean_dataframe(company.overview())
+                result['overview'] = overview.to_dict('records') if overview is not None and not overview.empty else None
             except Exception as e:
                 self.logger.warning(f"Could not get overview for {symbol}: {e}")
 
             # Get major shareholders
             try:
-                shareholders = company.shareholders()
-                result['shareholders'] = shareholders.to_dict('records') if not shareholders.empty else None
+                shareholders = self._clean_dataframe(company.shareholders())
+                result['shareholders'] = shareholders.to_dict('records') if shareholders is not None and not shareholders.empty else None
             except Exception as e:
                 self.logger.warning(f"Could not get shareholders for {symbol}: {e}")
 
             # Get company officers
             try:
-                officers = company.officers()
-                result['officers'] = officers.to_dict('records') if not officers.empty else None
+                officers = self._clean_dataframe(company.officers())
+                result['officers'] = officers.to_dict('records') if officers is not None and not officers.empty else None
             except Exception as e:
                 self.logger.warning(f"Could not get officers for {symbol}: {e}")
 
             # Get subsidiaries
             try:
-                subsidiaries = company.subsidiaries()
-                result['subsidiaries'] = subsidiaries.to_dict('records') if not subsidiaries.empty else None
+                subsidiaries = self._clean_dataframe(company.subsidiaries())
+                result['subsidiaries'] = subsidiaries.to_dict('records') if subsidiaries is not None and not subsidiaries.empty else None
             except Exception as e:
                 self.logger.warning(f"Could not get subsidiaries for {symbol}: {e}")
 
             # Get recent events
             try:
-                events = company.events()
-                result['events'] = events.to_dict('records') if not events.empty else None
+                events = self._clean_dataframe(company.events())
+                result['events'] = events.to_dict('records') if events is not None and not events.empty else None
             except Exception as e:
                 self.logger.warning(f"Could not get events for {symbol}: {e}")
 
-            # Get recent news
-            try:
-                news = company.news()
-                result['news'] = news.to_dict('records') if not news.empty else None
-            except Exception as e:
-                self.logger.warning(f"Could not get news for {symbol}: {e}")
+            # Note: News is now fetched via IQXNewsClient for better quality and real-time data
+            # Removed company.news() to avoid redundant calls
 
             return result
 
@@ -81,10 +105,15 @@ class VNStockClient:
 
     def get_stock_news(self, symbol: str, limit: int = 10) -> Dict:
         """
-        Get recent news for a specific stock symbol
+        DEPRECATED: Use IQXNewsClient.get_latest_news() instead for better quality news data
+        
+        This method uses vnstock's company.news() which is less reliable.
+        Kept for backward compatibility only.
         """
+        self.logger.warning(f"get_stock_news is deprecated. Use IQXNewsClient instead.")
         try:
-            company = Company(symbol=symbol, source=self.default_source)
+            # Company class only accepts 'VCI' source
+            company = Company(symbol=symbol, source='VCI')
 
             # Get recent news
             news_df = company.news()
@@ -138,7 +167,8 @@ class VNStockClient:
             if df is None or df.empty:
                 return {'error': f'No data found for symbol {symbol}. Symbol may not exist or data unavailable for the specified period.'}
 
-            # Convert to dict and add summary statistics
+            # Clean and convert to dict
+            df = self._clean_dataframe(df)
             data_records = df.to_dict('records')
             result = {
                 'symbol': symbol,
@@ -180,7 +210,8 @@ class VNStockClient:
         Get financial reports (income statement, balance sheet, cash flow)
         """
         try:
-            finance = Finance(symbol=symbol, source=self.default_source)
+            # Finance class only accepts 'VCI' or 'MAS', use VCI as default
+            finance = Finance(symbol=symbol, source='VCI')
 
             result = {
                 'symbol': symbol,
@@ -194,29 +225,29 @@ class VNStockClient:
 
             # Get income statement
             try:
-                income = finance.income_statement(period=period, lang=lang)
-                result['income_statement'] = income.to_dict('records') if not income.empty else None
+                income = self._clean_dataframe(finance.income_statement(period=period, lang=lang))
+                result['income_statement'] = income.to_dict('records') if income is not None and not income.empty else None
             except Exception as e:
                 self.logger.warning(f"Could not get income statement for {symbol}: {e}")
 
             # Get balance sheet
             try:
-                balance = finance.balance_sheet(period=period, lang=lang)
-                result['balance_sheet'] = balance.to_dict('records') if not balance.empty else None
+                balance = self._clean_dataframe(finance.balance_sheet(period=period, lang=lang))
+                result['balance_sheet'] = balance.to_dict('records') if balance is not None and not balance.empty else None
             except Exception as e:
                 self.logger.warning(f"Could not get balance sheet for {symbol}: {e}")
 
             # Get cash flow
             try:
-                cash_flow = finance.cash_flow(period=period, lang=lang)
-                result['cash_flow'] = cash_flow.to_dict('records') if not cash_flow.empty else None
+                cash_flow = self._clean_dataframe(finance.cash_flow(period=period, lang=lang))
+                result['cash_flow'] = cash_flow.to_dict('records') if cash_flow is not None and not cash_flow.empty else None
             except Exception as e:
                 self.logger.warning(f"Could not get cash flow for {symbol}: {e}")
 
             # Get financial ratios
             try:
-                ratios = finance.ratio(period=period, lang=lang)
-                result['financial_ratios'] = ratios.to_dict('records') if not ratios.empty else None
+                ratios = self._clean_dataframe(finance.ratio(period=period, lang=lang))
+                result['financial_ratios'] = ratios.to_dict('records') if ratios is not None and not ratios.empty else None
             except Exception as e:
                 self.logger.warning(f"Could not get financial ratios for {symbol}: {e}")
 
@@ -438,7 +469,7 @@ class VNStockClient:
         Lấy top mã tăng giá mạnh nhất
         """
         try:
-            top = TopStock(source='vci')
+            top = TopStock(source='VND')
             df = top.gainer(index=index, limit=limit)
             return {
                 'success': True,
@@ -454,7 +485,7 @@ class VNStockClient:
         Lấy top mã giảm giá mạnh nhất
         """
         try:
-            top = TopStock(source='vci')
+            top = TopStock(source='VND')
             df = top.loser(index=index, limit=limit)
             return {
                 'success': True,
@@ -486,7 +517,7 @@ class VNStockClient:
         Lấy top mã có khối lượng giao dịch lớn nhất
         """
         try:
-            top = TopStock(source='vci')
+            top = TopStock(source='VND')
             df = top.volume(index=index, limit=limit)
             return {
                 'success': True,
@@ -506,7 +537,7 @@ class VNStockClient:
             if not date:
                 date = datetime.now().strftime('%Y-%m-%d')
 
-            top = TopStock(source='vci')
+            top = TopStock(source='VND')
             df = top.foreign_buy(date=date)
             return {
                 'success': True,
@@ -526,7 +557,7 @@ class VNStockClient:
             if not date:
                 date = datetime.now().strftime('%Y-%m-%d')
 
-            top = TopStock(source='vci')
+            top = TopStock(source='VND')
             df = top.foreign_sell(date=date)
             return {
                 'success': True,

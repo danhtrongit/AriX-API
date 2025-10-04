@@ -1,36 +1,52 @@
-from models.gemini_client import GeminiClient
+from models.openai_client import OpenAIClient
 from models.vnstock_client import VNStockClient
 from models.iqx_news_client import IQXNewsClient
 from services.query_parser import QueryParser
-from services.query_analyzer import QueryAnalyzer
+from services.smart_query_classifier import SmartQueryClassifier
 from services.data_fetcher import DataFetcher
+from services.rag_service import RAGService
+from config import Config
 from typing import Dict, Optional
 import logging
+import requests
 
 class ChatService:
     def __init__(self):
-        self.gemini_client = GeminiClient()
+        self.openai_client = OpenAIClient()
         self.vnstock_client = VNStockClient()
         self.iqx_news_client = IQXNewsClient()
         self.query_parser = QueryParser()
-        self.query_analyzer = QueryAnalyzer()
+        self.smart_classifier = SmartQueryClassifier(
+            Config.OPENAI_API_KEY,
+            Config.OPENAI_BASE,
+            Config.CHAT_MODEL
+        )
         self.data_fetcher = DataFetcher()
+        self.rag_service = RAGService(Config)
         self.logger = logging.getLogger(__name__)
 
     def process_message(self, user_message: str, session_id: str = 'default') -> Dict:
         """
         Process user message - 2 bước tối ưu:
-        Bước 1: AI phân tích câu hỏi -> xác định symbols + API calls
+        Bước 1: Smart classification -> xác định symbols + API calls
         Bước 2: Fetch data -> AI phân tích toàn bộ dữ liệu -> trả lời
         """
+        import time
         try:
-            # BƯỚC 1: AI phân tích câu hỏi
+            # BƯỚC 1: Smart Query Classification
+            start_time = time.time()
             self.logger.info(f"[Step 1] Analyzing query: {user_message}")
-            analysis = self.query_analyzer.analyze_query(user_message)
+            
+            # Dùng Smart Classifier (AI nhẹ + Regex)
+            self.logger.info(f"[Parser] Using Smart Hybrid Classifier (AI+Regex)")
+            analysis = self.smart_classifier.parse(user_message)
+            
+            step1_time = time.time() - start_time
+            self.logger.info(f"[Step 1] ⏱️ Completed in {step1_time:.2f}s")
 
             # Kiểm tra nếu không liên quan chứng khoán
             if analysis['query_intent'] == 'general' and not analysis['symbols']:
-                response = self.gemini_client.generate_response(user_message, None)
+                response = self.openai_client.generate_response(user_message, None)
                 return {
                     'success': True,
                     'response': response,
@@ -42,14 +58,68 @@ class ChatService:
             # Fetch dữ liệu dựa trên analysis
             self.logger.info(f"[Step 1] Analysis result: symbols={analysis['symbols']}, api_calls={len(analysis['api_calls'])}")
 
+            # Kiểm tra nếu có RAG query
+            rag_calls = [call for call in analysis['api_calls'] if call.get('service') == 'rag_query']
+            if rag_calls:
+                # Xử lý bằng RAG
+                rag_call = rag_calls[0]
+                ticker = rag_call['params'].get('symbol', analysis['symbols'][0] if analysis['symbols'] else 'VIC')
+                
+                self.logger.info("="*60)
+                self.logger.info(f"🎯 DATA SOURCE: RAG (Vector Database)")
+                self.logger.info(f"📊 Ticker: {ticker}")
+                self.logger.info(f"❓ Question: {user_message}")
+                self.logger.info("="*60)
+                
+                rag_start = time.time()
+                rag_result = self.rag_service.query_financials(user_message, ticker)
+                rag_time = time.time() - rag_start
+                
+                if rag_result['success']:
+                    self.logger.info(f"✅ RAG Query Success - Context used: {rag_result.get('context_used', 0)} points")
+                    self.logger.info(f"⏱️ RAG Time: {rag_time:.2f}s")
+                    return {
+                        'success': True,
+                        'response': rag_result['answer'],
+                        'query_analysis': analysis,
+                        'data_sources_used': ['rag'],
+                        'rag_context_used': rag_result.get('context_used', 0),
+                        'session_id': session_id
+                    }
+                else:
+                    # RAG failed, fall back to normal processing
+                    self.logger.warning(f"❌ RAG Failed: {rag_result.get('error')}")
+                    self.logger.info(f"↩️ Falling back to standard API processing")
+                    # Remove rag_query from api_calls để không gọi lại
+                    analysis['api_calls'] = [call for call in analysis['api_calls'] if call.get('service') != 'rag_query']
+            
             # BƯỚC 2: Fetch data và AI phân tích
             if analysis['api_calls']:
-                self.logger.info(f"[Step 2] Fetching data from {len(analysis['api_calls'])} API calls")
+                # Log data sources
+                self.logger.info("="*60)
+                self.logger.info(f"🎯 DATA SOURCE: Standard APIs")
+                api_services = [call.get('service', 'unknown') for call in analysis['api_calls']]
+                self.logger.info(f"📡 Services: {', '.join(api_services)}")
+                self.logger.info(f"📊 Total API calls: {len(analysis['api_calls'])}")
+                for i, call in enumerate(analysis['api_calls'], 1):
+                    service = call.get('service', 'unknown')
+                    params = call.get('params', {})
+                    self.logger.info(f"  [{i}] {service} - {params}")
+                self.logger.info("="*60)
+                
+                # Fetch data
+                fetch_start = time.time()
                 fetched_data = self.data_fetcher.fetch_data(analysis['api_calls'])
+                fetch_time = time.time() - fetch_start
+                self.logger.info(f"✅ Data fetched in {fetch_time:.2f}s")
 
                 # AI phân tích toàn bộ dữ liệu và trả lời
-                self.logger.info(f"[Step 2] AI analyzing fetched data")
+                ai_start = time.time()
+                self.logger.info(f"[Step 3] AI formatting response")
                 response = self._generate_ai_response(user_message, analysis, fetched_data)
+                ai_time = time.time() - ai_start
+                self.logger.info(f"[Step 3] ⏱️ AI response in {ai_time:.2f}s")
+                self.logger.info(f"⏱️ TOTAL: Analysis={step1_time:.2f}s + Fetch={fetch_time:.2f}s + AI={ai_time:.2f}s = {step1_time+fetch_time+ai_time:.2f}s")
 
                 return {
                     'success': True,
@@ -61,7 +131,7 @@ class ChatService:
                 }
             else:
                 # Không có API calls cần thực hiện
-                response = self.gemini_client.generate_response(user_message, None)
+                response = self.openai_client.generate_response(user_message, None)
                 return {
                     'success': True,
                     'response': response,
@@ -87,10 +157,32 @@ class ChatService:
             # Build context for AI
             context_prompt = self._build_context_prompt(user_query, analysis, fetched_data)
 
-            # Generate response
-            response = self.gemini_client.model.generate_content(context_prompt)
-
-            return response.text.strip()
+            # Generate response using OpenAI direct API call
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.openai_client.api_key}"
+            }
+            
+            payload = {
+                "model": self.openai_client.model,
+                "messages": [
+                    {"role": "system", "content": "You are AriX - Stock Analysis Assistant"},
+                    {"role": "user", "content": context_prompt}
+                ],
+                "temperature": self.openai_client.temperature,
+                "max_tokens": self.openai_client.max_tokens
+            }
+            
+            response = requests.post(
+                self.openai_client.api_url,
+                headers=headers,
+                json=payload,
+                timeout=60
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            return result['choices'][0]['message']['content'].strip()
 
         except Exception as e:
             self.logger.error(f"Error generating AI response: {e}")
@@ -102,7 +194,54 @@ class ChatService:
         """
         import json
 
-        prompt = f"""Bạn là trợ lý phân tích chứng khoán chuyên nghiệp.
+        # Check if this is a news query
+        is_news_query = analysis.get('query_intent') == 'get_news'
+        
+        if is_news_query:
+            prompt = f"""Bạn là AriX - Trợ lý Tin tức Chứng khoán chuyên nghiệp.
+
+Câu hỏi: "{user_query}"
+
+Mã cổ phiếu: {', '.join(analysis.get('symbols', []))}
+
+Dữ liệu tin tức:
+{json.dumps(fetched_data, ensure_ascii=False, indent=2)}
+
+**YÊU CẦU FORMAT MARKDOWN:**
+
+1. Hiển thị 5-8 tin tức nổi bật nhất (nếu có)
+2. Mỗi tin tức PHẢI tuân thủ format markdown chuẩn sau:
+
+### [Tiêu đề tin]
+
+Đánh giá: <sentiment> (Tốt, Xấu, Trung lập)
+
+[Đọc chi tiết →](/tin-tuc/<slug>)
+
+---
+
+3. Sentiment mapping:
+   - positive → "Tốt"
+   - negative → "Xấu"
+   - neutral → "Trung lập"
+
+4. Cuối cùng thêm:
+💡 **Dữ liệu từ:** IQX
+
+**LƯU Ý QUAN TRỌNG:**
+- PHẢI có dòng trống giữa các phần để xuống dòng đúng
+- Format phải giống y chang ví dụ trên
+- PHẢI dùng markdown link: [Đọc chi tiết →](/tin-tuc/<slug>)
+- KHÔNG dùng HTML tags như <a href="...">
+- KHÔNG thêm tóm tắt hay nội dung gì thêm
+- Lấy slug từ field "slug" trong data
+- KHÔNG bịa thông tin, chỉ dùng dữ liệu có sẵn
+- Sắp xếp tin theo độ quan trọng (dựa vào sentiment và ngày)
+
+Trả lời:"""
+        else:
+            # General query prompt
+            prompt = f"""Bạn là trợ lý phân tích chứng khoán chuyên nghiệp.
 
 Câu hỏi của người dùng: "{user_query}"
 
@@ -252,10 +391,10 @@ Trả lời:"""
             # Use specialized stock analysis method
             for symbol, data in context_data.items():
                 if 'price_data' in data:
-                    return self.gemini_client.analyze_stock_data(symbol, data)
+                    return self.openai_client.analyze_stock_data(symbol, data)
 
         # For general queries or when no specific analysis is needed
-        return self.gemini_client.generate_response(user_message, context_data)
+        return self.openai_client.generate_response(user_message, context_data)
 
     def _format_symbol_suggestions(self, invalid_symbols: list, suggestions: dict) -> str:
         """
@@ -279,16 +418,16 @@ Trả lời:"""
         """
         Get conversation history for a session
         """
-        # For now, we'll use the default Gemini client history
+        # For now, we'll use the default OpenAI client history
         # In a production system, you might want to store per-session histories
-        return self.gemini_client.conversation_history
+        return self.openai_client.conversation_history
 
     def clear_conversation_history(self, session_id: str = 'default') -> bool:
         """
         Clear conversation history for a session
         """
         try:
-            self.gemini_client.clear_history()
+            self.openai_client.clear_history()
             return True
         except Exception as e:
             self.logger.error(f"Error clearing history: {e}")

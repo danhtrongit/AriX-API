@@ -1,40 +1,52 @@
-import google.generativeai as genai
+import requests
 from config import Config
 from typing import Dict, List, Optional
 import json
 
-class GeminiClient:
+class OpenAIClient:
     def __init__(self):
-        genai.configure(api_key=Config.GEMINI_API_KEY)
-
-        # Use gemini-flash-latest as requested
-        try:
-            self.model = genai.GenerativeModel('gemini-flash-latest')
-            print("Successfully initialized with model: gemini-flash-latest")
-        except Exception as e:
-            print(f"Failed to initialize gemini-flash-latest: {e}")
-            # Fallback to other models
-            model_names = [
-                'gemini-pro',
-                'gemini-1.5-flash-latest',
-                'gemini-1.5-flash',
-                'gemini-1.5-flash-001'
-            ]
-
-            self.model = None
-            for model_name in model_names:
-                try:
-                    self.model = genai.GenerativeModel(model_name)
-                    print(f"Successfully initialized with fallback model: {model_name}")
-                    break
-                except Exception as fallback_error:
-                    print(f"Failed to initialize model {model_name}: {fallback_error}")
-                    continue
-
-            if self.model is None:
-                raise Exception("Could not initialize any Gemini model")
-
+        self.api_key = Config.OPENAI_API_KEY
+        self.api_url = "https://v98store.com/v1/chat/completions"
+        
+        # Model configuration - using GPT-4 Turbo for best results
+        self.model = "gpt-4o-mini"
+        self.temperature = 0.7
+        self.max_tokens = 4096
+        
         self.conversation_history: List[Dict] = []
+
+    def _call_openai_api(self, messages: List[Dict], temperature: float = None, max_tokens: int = None) -> str:
+        """
+        Call OpenAI API directly using requests
+        """
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature or self.temperature,
+            "max_tokens": max_tokens or self.max_tokens
+        }
+        
+        try:
+            response = requests.post(
+                self.api_url,
+                headers=headers,
+                json=payload,
+                timeout=60
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            return result['choices'][0]['message']['content']
+            
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"OpenAI API request failed: {str(e)}")
+        except (KeyError, IndexError) as e:
+            raise Exception(f"Invalid API response format: {str(e)}")
 
     def generate_response(self, user_message: str, context_data: Optional[Dict] = None) -> str:
         """
@@ -44,13 +56,18 @@ class GeminiClient:
             # Use comprehensive prompt for natural conversation
             prompt = self._build_prompt(user_message, context_data)
 
-            # Generate response
-            response = self.model.generate_content(prompt)
+            # Generate response using OpenAI Chat API
+            messages = [
+                {"role": "system", "content": self._get_system_prompt()},
+                {"role": "user", "content": prompt}
+            ]
+            
+            response_text = self._call_openai_api(messages)
 
             # Store conversation history
-            self._update_conversation_history(user_message, response.text)
+            self._update_conversation_history(user_message, response_text)
 
-            return response.text
+            return response_text
 
         except Exception as e:
             return f"Không thể truy vấn dữ liệu: {str(e)}"
@@ -118,7 +135,7 @@ Chỉ thông tin cốt lõi, không mở rộng thêm."""
         Generate focused news response without analysis
         """
         try:
-            news_prompt = f"""Bạn là AriX - AI Tin tức Chứng khoán. Trả lời ngắn gọn về tin tức được yêu cầu.
+            news_prompt = f"""Bạn là AriX - AI Tin tức Chứng khoán. Trả lời về tin tức với format markdown đẹp mắt.
 
 **NGUYÊN TẮC:**
 1. CHỈ tóm tắt tin tức có sẵn
@@ -133,34 +150,56 @@ Chỉ thông tin cốt lõi, không mở rộng thêm."""
 
 **CÂU HỎI:** {user_message}
 
-**YÊU CẦU:** Tóm tắt 3-4 tin tức chính trong ngày bằng bullet points, mỗi tin 1-2 câu ngắn gọn.
+**YÊU CẦU FORMAT MARKDOWN:**
 
-**FORMAT:**
-### 📰 Tin tức [MÃ CỔ PHIẾU]
+Hiển thị 5-8 tin tức nổi bật (hoặc tất cả nếu ít hơn), mỗi tin PHẢI tuân thủ format markdown chuẩn sau:
 
-**Tin tức nổi bật:**
-• [Tiêu đề tin 1]: [Tóm tắt ngắn]
-• [Tiêu đề tin 2]: [Tóm tắt ngắn]
-• [Tiêu đề tin 3]: [Tóm tắt ngắn]
+### [Tiêu đề tin]
 
-💡 **Nguồn:** IQX News API
+Đánh giá: <sentiment> (Tốt, Xấu, Trung lập)
+
+[Đọc chi tiết →](/tin-tuc/<slug>)
+
+---
+
+**Sentiment mapping:**
+- positive → "Tốt"
+- negative → "Xấu"
+- neutral → "Trung lập"
+
+**Kết thúc với:**
+💡 **Dữ liệu từ:** IQX
+
+**LƯU Ý QUAN TRỌNG:**
+- PHẢI có dòng trống giữa các phần để xuống dòng đúng
+- Format phải giống y chang ví dụ trên
+- PHẢI dùng markdown link: [Đọc chi tiết →](/tin-tuc/<slug>)
+- KHÔNG dùng HTML tags như <a href="...">
+- KHÔNG thêm tóm tắt hay nội dung gì thêm
+- Lấy slug từ field "slug" trong data
+- KHÔNG bịa thông tin, chỉ dùng dữ liệu có sẵn
 """
 
-            response = self.model.generate_content(news_prompt)
+            messages = [
+                {"role": "system", "content": "You are AriX - AI Stock News Assistant"},
+                {"role": "user", "content": news_prompt}
+            ]
+            
+            response_text = self._call_openai_api(messages)
 
             # Store conversation history
-            self._update_conversation_history(user_message, response.text)
+            self._update_conversation_history(user_message, response_text)
 
-            return response.text
+            return response_text
 
         except Exception as e:
             return f"Không thể lấy tin tức: {str(e)}"
 
-    def _build_prompt(self, user_message: str, context_data: Optional[Dict] = None) -> str:
+    def _get_system_prompt(self) -> str:
         """
-        Build comprehensive prompt for AriX - Professional Investment Analyst
+        Get system prompt for AriX
         """
-        system_prompt = """Bạn là AriX - Cố vấn Phân tích Đầu tư Chuyên nghiệp của hệ thống IQX.
+        return """Bạn là AriX - Cố vấn Phân tích Đầu tư Chuyên nghiệp của hệ thống IQX.
 
 **ĐỊNH DANH & VAI TRÒ:**
 - Tên: AriX (AI Investment Research & eXpert)
@@ -176,16 +215,26 @@ Chỉ thông tin cốt lõi, không mở rộng thêm."""
 - Xưng hô: "Tôi đánh giá...", "Theo phân tích của tôi...", "Dựa trên dữ liệu hiện có..."
 
 **NGUYÊN TẮC TRẢ LỜI:**
-1. **Ngắn gọn và đúng trọng tâm**: Chỉ trả lời điều được hỏi, không mở rộng
-2. **Thông tin cốt lõi**: Cung cấp dữ liệu quan trọng nhất, bỏ qua chi tiết thừa
+1. **Nhất quán và đầy đủ**: Luôn trả lời theo cùng một format cố định cho cùng loại câu hỏi
+2. **Thông tin cốt lõi**: Cung cấp đầy đủ dữ liệu quan trọng, đặc biệt là số liệu giá cổ phiếu
 3. **Không phân tích dài dòng**: Tránh giải thích phức tạp hay phân tích sâu
 4. **Không khuyến nghị**: Không đưa ra lời khuyên mua/bán hay định hướng đầu tư
 5. **Trả lời trực tiếp**: Đi thẳng vào vấn đề, không lòng vòng
 
-**FORMAT PHẢN HỒI (Markdown):**
-Không sử dụng template cố định. Trả lời tự nhiên, ngắn gọn theo dạng:
+**FORMAT PHẢN HỒI CỐ ĐỊNH CHO CÂU HỎI VỀ GIÁ:**
+Khi được hỏi về giá cổ phiếu (VD: "giá FPT", "FPT bao nhiêu"), BẮT BUỘC trả lời theo format sau:
 
-VD: "VCB hiện giá 65.700 VND (-0.2%), là ngân hàng lớn nhất. Cổ đông chính là SBV (74.8%). Biến động 1 năm -27.9%."
+Giá cổ phiếu [MÃ] hiện tại là [giá đóng cửa].
+
+Chi tiết phiên giao dịch gần nhất:
+- Giá mở cửa: [giá mở cửa]
+- Giá đóng cửa: [giá đóng cửa]
+- [Tăng/Giảm] [số điểm] ([phần trăm]%) so với phiên trước
+- Khối lượng giao dịch: [khối lượng] cổ phiếu
+
+**FORMAT PHẢN HỒI CHO CÂU HỎI KHÁC:**
+Đối với câu hỏi không phải về giá, trả lời ngắn gọn:
+VD: "VCB là ngân hàng lớn nhất. Cổ đông chính là SBV (74.8%). Biến động 1 năm -27.9%."
 
 **ĐẶC BIỆT KHI TRẢ LỜI VỀ TIN TỨC:**
 - Luôn bao gồm link tin tức với format: [Tiêu đề tin](URL) (sử dụng slug của data. chèn thêm base url là 'https://dashboard.iqx.vn/tin-tuc/')
@@ -200,13 +249,20 @@ Không dùng format:
 - ❌ "**Căn cứ phân tích:**"
 - ❌ "> ⚠️ **Lưu ý:**"
 
-**VÍ DỤ PHONG CÁCH NGẮN GỌN:**
-❌ Tránh: "Chào bạn, tôi là AriX. Tôi rất sẵn lòng phân tích VCB... [dài dòng]"
-❌ Tránh: "Về VCB thì có cả mặt tốt và mặt chưa tốt. Định giá hiện tại không quá cao... [phân tích dài]"
+**VÍ DỤ CỤ THỂ:**
 
-✅ Ngắn gọn: "VCB hiện giá 65.700 VND (-0.2%), là ngân hàng lớn với SBV sở hữu 74.8%. Biến động 1 năm -27.9%."
+❌ Tránh (không nhất quán): "Giá cổ phiếu FPT đóng cửa ở mức 93.000. Mức giá này giảm 2.5 điểm, tương đương 2.62% so với phiên giao dịch trước."
 
-✅ Ngắn gọn: "VCB thuộc ngành ngân hàng, niêm yết trên HOSE. Cổ đông lớn là Ngân hàng Nhà nước (74.8%) và Mizuho Bank (15%)."
+✅ Đúng (nhất quán, đầy đủ):
+"Giá cổ phiếu FPT hiện tại là 93.0.
+
+Chi tiết phiên giao dịch gần nhất:
+- Giá mở cửa: 95.500
+- Giá đóng cửa: 93.000
+- Giảm 2.5 điểm (-2.62%) so với phiên trước
+- Khối lượng giao dịch: 12,018,800 cổ phiếu"
+
+✅ Câu hỏi về công ty: "VCB thuộc ngành ngân hàng, niêm yết trên HOSE. Cổ đông lớn là Ngân hàng Nhà nước (74.8%) và Mizuho Bank (15%)."
 
 **LĨNH VỰC CHUYÊN MÔN:**
 - Phân tích cơ bản (Fundamental Analysis)
@@ -234,8 +290,15 @@ Không dùng format:
 - Không phân tích hay đưa ra khuyến nghị trừ khi được hỏi cụ thể
 - Tập trung vào dữ liệu thực tế, tránh lý thuyết
 
-Luôn nhớ: Trả lời đúng điều được hỏi."""
+**FORMAT KẾT QUẢ TRẢ VỀ:**
+- Trả lời có dạng markdown, dễ đọc, dễ format nội dung trong khung chat
 
+Luôn nhớ: Chỉ được phép trả lời đúng điều được hỏi, không được bịa đặt thông tin."""
+
+    def _build_prompt(self, user_message: str, context_data: Optional[Dict] = None) -> str:
+        """
+        Build comprehensive prompt for AriX - Professional Investment Analyst
+        """
         # Add context data if available
         context_section = ""
         if context_data:
@@ -248,7 +311,7 @@ Luôn nhớ: Trả lời đúng điều được hỏi."""
             for item in self.conversation_history[-2:]:  # Last 2 exchanges
                 history_section += f"👤 **User:** {item['user']}\n🤖 **AriX:** {item['ai']}\n\n"
 
-        full_prompt = f"{system_prompt}{context_section}{history_section}\n\n**CÂU HỎI HIỆN TẠI:** {user_message}\n\n**YÊU CẦU:** Trả lời bằng Markdown theo phong cách AriX chuyên nghiệp, có số liệu dẫn chứng."
+        full_prompt = f"{context_section}{history_section}\n\n**CÂU HỎI HIỆN TẠI:** {user_message}\n\n**YÊU CẦU:** Trả lời bằng Markdown theo phong cách AriX chuyên nghiệp, có số liệu dẫn chứng."
 
         return full_prompt
 
@@ -293,7 +356,12 @@ Luôn nhớ: Trả lời đúng điều được hỏi."""
 CHỈ thông tin cốt lõi, bỏ qua chi tiết phức tạp.
 """
 
-            response = self.model.generate_content(data_prompt)
-            return response.text
+            messages = [
+                {"role": "system", "content": "You are a data extraction assistant"},
+                {"role": "user", "content": data_prompt}
+            ]
+            
+            return self._call_openai_api(messages, temperature=0.3, max_tokens=500)
+            
         except Exception as e:
             return f"Không thể trích xuất dữ liệu: {str(e)}"

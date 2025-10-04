@@ -1,14 +1,15 @@
-from models.gemini_client import GeminiClient
+from models.openai_client import OpenAIClient
 from typing import Dict, List, Optional
 import logging
 import json
+import requests
 
 class QueryAnalyzer:
     """
     AI-powered query analyzer that determines symbols and appropriate API calls
     """
     def __init__(self):
-        self.gemini_client = GeminiClient()
+        self.openai_client = OpenAIClient()
         self.logger = logging.getLogger(__name__)
 
     def analyze_query(self, user_query: str) -> Dict:
@@ -39,8 +40,31 @@ class QueryAnalyzer:
             analysis_prompt = self._build_analysis_prompt(user_query)
 
             # Gọi AI để phân tích
-            response = self.gemini_client.model.generate_content(analysis_prompt)
-            analysis_result = self._parse_ai_response(response.text)
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.openai_client.api_key}"
+            }
+            
+            payload = {
+                "model": self.openai_client.model,
+                "messages": [
+                    {"role": "system", "content": "You are a query analyzer for Vietnamese stock market questions."},
+                    {"role": "user", "content": analysis_prompt}
+                ],
+                "temperature": 0.3,
+                "max_tokens": 1000
+            }
+            
+            response = requests.post(
+                self.openai_client.api_url,
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            analysis_result = self._parse_ai_response(result['choices'][0]['message']['content'])
 
             self.logger.info(f"Query analysis: {analysis_result}")
             return analysis_result
@@ -60,9 +84,9 @@ Câu hỏi: "{user_query}"
 Các API service có sẵn:
 1. get_current_price(symbol) - Giá hiện tại
 2. get_stock_price_history(symbol, start_date, end_date) - Lịch sử giá
-3. get_company_info(symbol) - Thông tin công ty
+3. get_company_info(symbol) - Thông tin công ty (KHÔNG bao gồm tin tức)
 4. get_financial_reports(symbol, period='year'|'quarter') - Báo cáo tài chính
-5. get_stock_news(symbol) - Tin tức
+5. get_stock_news(symbol) - Tin tức (sử dụng IQXNewsClient - nguồn tin chất lượng cao)
 6. get_all_symbols() - Danh sách mã
 7. get_price_board(symbols) - Bảng giá nhiều mã
 8. get_order_stats(symbol) - Thống kê lệnh
@@ -109,6 +133,14 @@ Trả về JSON với format sau (chỉ trả JSON, không thêm text khác):
 Lưu ý:
 - Chỉ trích xuất mã CK thật (VCB, FPT, HPG...)
 - Chọn đúng API service theo nhu cầu
+- **QUAN TRỌNG: Nếu hỏi về tin tức, BẮT BUỘC dùng get_stock_news (không dùng get_company_info)**
+- **QUAN TRỌNG: Ưu tiên rag_query khi:**
+  + Hỏi về báo cáo tài chính chi tiết (BCTC)
+  + Hỏi về chỉ tiêu cụ thể: CFA1, ISA1, BSA1, ROE, PE, PB...
+  + Hỏi "X năm mới nhất", "3 năm gần đây", "quý 2/2024"
+  + Hỏi về lợi nhuận, doanh thu, tài sản, nợ phải trả theo năm/quý
+  + VD: "BCTC VIC 3 năm", "CFA1 VIC 2024", "ROE VNM quý 2/2025"
+- Dùng get_financial_reports cho tổng quan, rag_query cho chi tiết
 - Nếu hỏi về top/thống kê thị trường, dùng get_top_* hoặc get_market_*
 - Nếu hỏi về hàng hóa, dùng commodity APIs
 - Nếu hỏi về kinh tế vĩ mô, dùng macro APIs
@@ -178,14 +210,15 @@ Lưu ý:
                     'service': 'get_current_price',
                     'params': {'symbol': symbol}
                 })
-        elif any(word in query_lower for word in ['tin tức', 'news']):
+        elif any(word in query_lower for word in ['tin tức', 'tin', 'news', 'bài viết', 'thông tin mới']):
             result['query_intent'] = 'get_news'
+            result['needs_analysis'] = True
             for symbol in result['symbols']:
                 result['api_calls'].append({
-                    'service': 'get_stock_news',
+                    'service': 'get_stock_news',  # Routes to IQXNewsClient
                     'params': {'symbol': symbol, 'limit': 10}
                 })
-        elif any(word in query_lower for word in ['công ty', 'company']):
+        elif any(word in query_lower for word in ['công ty', 'company', 'doanh nghiệp']):
             result['query_intent'] = 'get_company_info'
             for symbol in result['symbols']:
                 result['api_calls'].append({

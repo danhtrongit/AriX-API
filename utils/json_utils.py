@@ -2,11 +2,29 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import json
+import warnings
+
+# Suppress pandas duplicate columns warning
+warnings.filterwarnings('ignore', message='DataFrame columns are not unique')
+
+def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean DataFrame by removing duplicate columns
+    """
+    if df is None or df.empty:
+        return df
+    
+    # Check for duplicate columns
+    if df.columns.duplicated().any():
+        # Keep first occurrence of duplicate columns
+        df = df.loc[:, ~df.columns.duplicated()]
+    
+    return df
 
 def serialize_data(data):
     """
     Convert pandas/numpy data types to JSON serializable formats
-    Handle NaN values properly
+    Handle NaN values and duplicate columns properly
     """
     if isinstance(data, dict):
         return {key: serialize_data(value) for key, value in data.items()}
@@ -15,12 +33,18 @@ def serialize_data(data):
     elif isinstance(data, pd.Timestamp):
         return data.isoformat()
     elif isinstance(data, (pd.Series, pd.DataFrame)):
-        return serialize_data(data.to_dict('records') if isinstance(data, pd.DataFrame) else data.to_dict())
+        if isinstance(data, pd.DataFrame):
+            # Clean duplicate columns before converting
+            data = clean_dataframe(data)
+            return serialize_data(data.to_dict('records'))
+        else:
+            return serialize_data(data.to_dict())
     elif isinstance(data, (np.integer, np.floating)):
         # Handle NaN values for numpy floats
         if np.isnan(data):
             return None
-        return data.item()
+        # Use float() to preserve full precision instead of item()
+        return float(data) if isinstance(data, np.floating) else int(data)
     elif isinstance(data, np.ndarray):
         return data.tolist()
     elif pd.isna(data) or (isinstance(data, float) and np.isnan(data)):
@@ -57,7 +81,8 @@ class CustomJSONEncoder(json.JSONEncoder):
         elif isinstance(obj, (np.integer, np.floating)):
             if np.isnan(obj):
                 return None
-            return obj.item()
+            # Use float() to preserve full precision
+            return float(obj) if isinstance(obj, np.floating) else int(obj)
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
         elif pd.isna(obj):

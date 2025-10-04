@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+import warnings
+# Suppress pandas warnings about duplicate columns
+warnings.filterwarnings('ignore', category=UserWarning, module='pandas')
+warnings.filterwarnings('ignore', message='.*columns are not unique.*')
+warnings.filterwarnings('ignore', message='.*DataFrame columns.*')
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from config import Config
@@ -21,7 +27,7 @@ CORS(app)
 logger = setup_logger(__name__, Config.LOG_LEVEL)
 
 # Initialize services
-chat_service = ChatService()
+chat_service = ChatService()  # RAGService đã được init trong ChatService
 data_service = DataService()
 iqx_news_client = IQXNewsClient()
 

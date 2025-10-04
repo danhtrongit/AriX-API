@@ -63,16 +63,16 @@ class DataFetcher:
         """
         Execute specific service call
         """
-        # VNStock services
-        if hasattr(self.vnstock_client, service):
-            method = getattr(self.vnstock_client, service)
-            return method(**params)
-
-        # IQX News services
-        elif service == 'get_stock_news':
+        # IQX News services - Check FIRST to override deprecated VNStock method
+        if service == 'get_stock_news':
             symbol = params.get('symbol')
             limit = params.get('limit', 10)
             return self.iqx_news_client.get_latest_news(symbol, limit=limit)
+
+        # VNStock services
+        elif hasattr(self.vnstock_client, service):
+            method = getattr(self.vnstock_client, service)
+            return method(**params)
 
         else:
             self.logger.warning(f"Unknown service: {service}")

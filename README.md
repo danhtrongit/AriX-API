@@ -19,7 +19,7 @@
 - **Financial Report Analysis**: P/E, ROE, ROA, and other key ratios
 - **Investment Recommendations**: Buy/Hold/Sell with target prices
 - **News Integration**: Latest market news with sentiment analysis
-- **AI-Powered Insights**: Professional analysis using Google Gemini AI
+- **AI-Powered Insights**: Professional analysis using OpenAI GPT-4
 
 ### Technical Features
 - **RESTful API** with comprehensive endpoints
@@ -78,7 +78,7 @@ docker-compose logs arix-api
 ### Environment Variables
 
 ```env
-GEMINI_API_KEY=your_gemini_api_key_here
+OPENAI_API_KEY=your_openai_api_key_here
 VNSTOCK_DEFAULT_SOURCE=VCI
 FLASK_ENV=production
 DEBUG=False
@@ -150,7 +150,7 @@ print(response.json()['response'])
 ```
 AriX API
 ├── models/
-│   ├── gemini_client.py      # Google Gemini AI integration
+│   ├── openai_client.py      # OpenAI GPT-4 integration
 │   ├── vnstock_client.py     # Vietnamese stock data
 │   └── iqx_news_client.py    # News data integration
 ├── services/
@@ -175,7 +175,7 @@ backend/
 ├── requirements.txt      # Python dependencies
 ├── .env                 # Environment variables
 ├── models/              # Data models
-│   ├── gemini_client.py  # Gemini 1.5 Flash integration
+│   ├── openai_client.py  # OpenAI GPT-4 integration
 │   └── vnstock_client.py # VNStock API integration
 ├── services/            # Business logic
 │   ├── chat_service.py   # Main chatbot service
@@ -201,7 +201,7 @@ pip install -r requirements.txt
 2. **Cấu hình environment variables**:
 Chỉnh sửa file `.env`:
 ```
-GEMINI_API_KEY=your-gemini-api-key-here
+OPENAI_API_KEY=your-openai-api-key-here
 SECRET_KEY=your-flask-secret-key-here
 DEBUG=True
 VNSTOCK_DEFAULT_SOURCE=TCBS
@@ -269,7 +269,7 @@ pytest tests/ -v
 
 2. **Truy vấn dữ liệu thông minh**: Tự động lấy dữ liệu cần thiết từ VNStock
 
-3. **Phân tích và tư vấn**: Sử dụng Gemini 1.5 Flash để phân tích dữ liệu và đưa ra nhận xét
+3. **Phân tích và tư vấn**: Sử dụng OpenAI GPT-4 để phân tích dữ liệu và đưa ra nhận xét
 
 4. **Ghi nhớ ngữ cảnh**: Duy trì lịch sử hội thoại để câu trả lời có tính liên tục
 

@@ -98,11 +98,11 @@ class InputValidator:
         if not api_key:
             return False
 
-        # Basic length check (Gemini API keys are typically long)
+        # Basic length check (OpenAI API keys are typically long)
         if len(api_key) < 20:
             return False
 
-        # Should contain alphanumeric characters
+        # Should contain alphanumeric characters and dashes
         if not re.match(r'^[a-zA-Z0-9_-]+$', api_key):
             return False
 

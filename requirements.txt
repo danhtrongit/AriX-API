@@ -2,8 +2,7 @@
 Flask==3.0.0
 Flask-CORS==4.0.0
 
-# Google Gemini AI
-google-generativeai==0.8.5
+# OpenAI API - using direct HTTP requests (no library needed)
 
 # VNStock for Vietnamese stock market data
 vnstock==3.2.6
@@ -25,6 +24,9 @@ python-dotenv==1.0.0
 # Production server
 gunicorn==21.2.0
 uvicorn[standard]==0.27.0
+
+# RAG - Vector Database
+qdrant-client
 
 # Testing (optional)
 pytest==7.4.0

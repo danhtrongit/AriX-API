@@ -1,4 +1,4 @@
-import google.generativeai as genai
+import requests
 from config import Config
 from typing import List, Dict, Optional
 import json
@@ -6,8 +6,9 @@ import logging
 
 class AISymbolDetector:
     def __init__(self):
-        genai.configure(api_key=Config.GEMINI_API_KEY)
-        self.model = genai.GenerativeModel('gemini-flash-lite-latest')
+        self.api_key = Config.OPENAI_API_KEY
+        self.api_url = "https://v98store.com/v1/chat/completions"
+        self.model = "gpt-4o-mini"
         self.logger = logging.getLogger(__name__)
 
         # Cache for validated symbols to avoid repeated API calls
@@ -113,8 +114,31 @@ class AISymbolDetector:
         """
 
         try:
-            response = self.model.generate_content(prompt)
-            response_text = response.text.strip()
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}"
+            }
+            
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": "You are a Vietnamese stock symbol analyzer."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.3,
+                "max_tokens": 500
+            }
+            
+            response = requests.post(
+                self.api_url,
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            response_text = result['choices'][0]['message']['content'].strip()
 
             # Try to extract JSON from response
             json_start = response_text.find('{')
@@ -327,8 +351,31 @@ Chọn 1 trong các ý định sau và trả về ĐÚNG từ khóa:
 Chỉ trả về TỪ KHÓA, không giải thích:
 """
 
-            response = self.model.generate_content(intent_prompt)
-            intent = response.text.strip()
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}"
+            }
+            
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": "You are a query intent classifier."},
+                    {"role": "user", "content": intent_prompt}
+                ],
+                "temperature": 0.3,
+                "max_tokens": 100
+            }
+            
+            response = requests.post(
+                self.api_url,
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            intent = result['choices'][0]['message']['content'].strip()
 
             # Validate intent response
             valid_intents = [
