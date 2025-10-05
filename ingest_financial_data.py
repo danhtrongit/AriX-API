@@ -17,6 +17,7 @@ from threading import Lock
 
 # ---------- EMBEDDING ----------
 def get_embedding(text: str):
+    """Get embedding for a single text"""
     headers = {
         "Authorization": f"Bearer {Config.OPENAI_API_KEY}",
         "Content-Type": "application/json"
@@ -28,6 +29,26 @@ def get_embedding(text: str):
     resp = requests.post(f"{Config.OPENAI_BASE}/embeddings", headers=headers, json=payload)
     resp.raise_for_status()
     return resp.json()["data"][0]["embedding"]
+
+def get_embeddings_batch(texts: list):
+    """Get embeddings for multiple texts in one API call (MUCH FASTER!)"""
+    if not texts:
+        return []
+    
+    headers = {
+        "Authorization": f"Bearer {Config.OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": Config.EMBEDDING_MODEL,
+        "input": texts  # Send all texts at once
+    }
+    resp = requests.post(f"{Config.OPENAI_BASE}/embeddings", headers=headers, json=payload)
+    resp.raise_for_status()
+    
+    # Response includes embeddings in order
+    data = resp.json()["data"]
+    return [item["embedding"] for item in sorted(data, key=lambda x: x["index"])]
 
 
 # ---------- LẤY DỮ LIỆU IQX ----------
@@ -170,7 +191,28 @@ def ingest_to_qdrant(ticker="VIC", recreate_collection=True):
                            If False, add to existing collection.
     """
     # 1️⃣ Kết nối
-    qdrant = QdrantClient(host=Config.QDRANT_HOST, port=Config.QDRANT_PORT)
+    # Hỗ trợ cả local (host+port) và remote (URL)
+    if Config.QDRANT_HOST.startswith(('http://', 'https://')):
+        # Remote Qdrant - parse URL to extract host
+        from urllib.parse import urlparse
+        parsed = urlparse(Config.QDRANT_HOST)
+        host = parsed.hostname or parsed.netloc
+        port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+        use_https = (parsed.scheme == 'https')
+        
+        qdrant = QdrantClient(
+            host=host,
+            port=port,
+            https=use_https,
+            api_key=Config.QDRANT_API_KEY,
+            timeout=60,
+            prefer_grpc=False
+        )
+        print(f"🔗 Kết nối Qdrant: {host}:{port} (https={use_https})")
+    else:
+        # Local Qdrant
+        qdrant = QdrantClient(host=Config.QDRANT_HOST, port=Config.QDRANT_PORT)
+        print(f"🔗 Kết nối Qdrant local: {Config.QDRANT_HOST}:{Config.QDRANT_PORT}")
 
     # 2️⃣ Tạo/kiểm tra collection
     collection_name = Config.QDRANT_COLLECTION
@@ -200,18 +242,18 @@ def ingest_to_qdrant(ticker="VIC", recreate_collection=True):
     data_blocks, field_map = fetch_company_data(ticker)
     print(f"📋 Đã load {len(field_map)} field mappings")
 
-    # 4️⃣ Tạo text & embedding với 128 workers song song
+    # 4️⃣ Tạo text list
     all_texts = []
     for block in data_blocks:
         texts = flatten_json_to_text(block["section"], block["content"], field_map)
         for t in texts:
             all_texts.append({"text": t, "section": block["section"]})
     
-    print(f"🚀 Bắt đầu xử lý {len(all_texts)} điểm dữ liệu với 128 workers...")
+    if not all_texts:
+        print(f"⚠️  Không có dữ liệu cho {ticker}, bỏ qua")
+        return
     
-    points = []
-    lock = Lock()
-    processed_count = [0]
+    print(f"📦 Tìm thấy {len(all_texts)} điểm dữ liệu")
     
     # Get offset ID for multi-ticker ingestion
     if not recreate_collection:
@@ -226,34 +268,42 @@ def ingest_to_qdrant(ticker="VIC", recreate_collection=True):
     else:
         offset_id = 0
     
-    def process_text(idx, item):
-        try:
-            emb = get_embedding(item["text"])
-            point = models.PointStruct(
-                id=offset_id + idx,
-                vector=emb,
-                payload={"ticker": ticker, "text": item["text"], "section": item["section"]}
-            )
-            
-            with lock:
-                processed_count[0] += 1
-                if processed_count[0] % 10 == 0:
-                    print(f"📊 Đã xử lý {processed_count[0]}/{len(all_texts)} điểm dữ liệu...")
-            
-            return point
-        except Exception as e:
-            print(f"❌ Lỗi khi xử lý điểm {idx}: {e}")
-            return None
+    # 5️⃣ Get embeddings in batches (MUCH FASTER!)
+    print(f"🚀 Đang tạo embeddings (batch mode - nhanh hơn 50-100x)...")
+    BATCH_SIZE = 50  # OpenAI supports up to 2048, but 50 is safer
+    all_embeddings = []
     
-    # Xử lý song song với ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=128) as executor:
-        futures = {executor.submit(process_text, idx, item): idx for idx, item in enumerate(all_texts)}
-        for future in as_completed(futures):
-            point = future.result()
-            if point:
-                points.append(point)
+    for i in range(0, len(all_texts), BATCH_SIZE):
+        batch = all_texts[i:i+BATCH_SIZE]
+        batch_texts = [item["text"] for item in batch]
+        
+        try:
+            embeddings = get_embeddings_batch(batch_texts)
+            all_embeddings.extend(embeddings)
+            print(f"📊 Đã xử lý {min(i+BATCH_SIZE, len(all_texts))}/{len(all_texts)} embeddings...")
+        except Exception as e:
+            print(f"❌ Lỗi batch {i}-{i+BATCH_SIZE}: {e}")
+            # Fallback to single embeddings for this batch
+            for text in batch_texts:
+                try:
+                    emb = get_embedding(text)
+                    all_embeddings.append(emb)
+                except Exception as e2:
+                    print(f"❌ Lỗi single embedding: {e2}")
+                    all_embeddings.append([0.0] * 3072)  # Zero vector as fallback
+    
+    # 6️⃣ Create points
+    print(f"📝 Tạo {len(all_embeddings)} points...")
+    points = []
+    for idx, (item, emb) in enumerate(zip(all_texts, all_embeddings)):
+        point = models.PointStruct(
+            id=offset_id + idx,
+            vector=emb,
+            payload={"ticker": ticker, "text": item["text"], "section": item["section"]}
+        )
+        points.append(point)
 
-    # 5️⃣ Ghi vào Qdrant
+    # 7️⃣ Ghi vào Qdrant
     print(f"💾 Đang ghi {len(points)} điểm vào Qdrant...")
     qdrant.upsert(collection_name=collection_name, points=points)
     print(f"✅ Đã nạp {len(points)} đoạn dữ liệu cho {ticker}.\n")

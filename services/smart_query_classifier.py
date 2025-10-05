@@ -14,8 +14,6 @@ Dùng:
 
 import re
 import requests
-import json
-import os
 from typing import Dict, List
 import logging
 
@@ -29,52 +27,26 @@ class SmartQueryClassifier:
     - Rule để build API calls
     """
     
+    # Danh sách mã chứng khoán phổ biến
+    COMMON_SYMBOLS = [
+        'VCB', 'TCB', 'MBB', 'ACB', 'BID', 'CTG', 'VPB', 'STB', 'TPB', 'HDB',
+        'VIC', 'VHM', 'VRE', 'NVL', 'PDR', 'DXG', 'KDH', 'BCM', 'HDG', 'NLG',
+        'SSI', 'VND', 'HCM', 'VCI', 'MBS', 'FTS', 'VIX', 'AGR', 'BSI', 'SHS',
+        'HPG', 'HSG', 'NKG', 'TLG', 'DTL', 'POM', 'DGC', 'VCS', 'TNG',
+        'FPT', 'CMG', 'VGI', 'SAM', 'ELC', 'ITD',
+        'MWG', 'PNJ', 'FRT', 'DGW',
+        'GAS', 'PVD', 'PVS', 'PVT', 'PVC', 'NT2', 'POW',
+        'VNM', 'MSN', 'SAB', 'VHC', 'KDC', 'ANV', 'MCH', 'SBT',
+        'GMD', 'VJC', 'HVN', 'ACV', 'VOS', 'VSC',
+        'DHG', 'IMP', 'DMC', 'TRA', 'DBD',
+        'PLX', 'GEX', 'HAG', 'REE', 'PC1', 'BWE', 'ASM', 'VPI'
+    ]
+    
     def __init__(self, openai_api_key: str, openai_base: str, model: str = "gpt-4o-mini"):
         self.api_key = openai_api_key
         self.api_base = openai_base
         self.model = model
         self.logger = logging.getLogger(__name__)
-        
-        # Load symbols từ JSON file
-        self.COMMON_SYMBOLS = self._load_symbols()
-    
-    def _load_symbols(self) -> List[str]:
-        """Load danh sách symbols từ file JSON"""
-        try:
-            # Tìm file symbols.json (có thể ở thư mục gốc hoặc thư mục hiện tại)
-            possible_paths = [
-                'symbols.json',
-                '../symbols.json',
-                os.path.join(os.path.dirname(__file__), '..', 'symbols.json')
-            ]
-            
-            for path in possible_paths:
-                if os.path.exists(path):
-                    with open(path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        symbols = data.get('symbols', [])
-                        self.logger.info(f"✅ Loaded {len(symbols)} symbols from {path}")
-                        return symbols
-            
-            # Fallback: danh sách mã phổ biến nếu không tìm thấy file
-            self.logger.warning("⚠️  symbols.json not found, using fallback list")
-            return [
-                'VCB', 'TCB', 'MBB', 'ACB', 'BID', 'CTG', 'VPB', 'STB', 'TPB', 'HDB',
-                'VIC', 'VHM', 'VRE', 'NVL', 'PDR', 'DXG', 'KDH', 'BCM', 'HDG', 'NLG',
-                'SSI', 'VND', 'HCM', 'VCI', 'MBS', 'FTS', 'VIX', 'AGR', 'BSI', 'SHS',
-                'HPG', 'HSG', 'NKG', 'TLG', 'DTL', 'POM', 'DGC', 'VCS', 'TNG',
-                'FPT', 'CMG', 'VGI', 'SAM', 'ELC', 'ITD',
-                'MWG', 'PNJ', 'FRT', 'DGW',
-                'GAS', 'PVD', 'PVS', 'PVT', 'PVC', 'NT2', 'POW',
-                'VNM', 'MSN', 'SAB', 'VHC', 'KDC', 'ANV', 'MCH', 'SBT',
-                'GMD', 'VJC', 'HVN', 'ACV', 'VOS', 'VSC',
-                'DHG', 'IMP', 'DMC', 'TRA', 'DBD',
-                'PLX', 'GEX', 'HAG', 'REE', 'PC1', 'BWE', 'ASM', 'VPI'
-            ]
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error loading symbols: {e}")
-            return []
     
     def extract_symbols(self, text: str) -> List[str]:
         """Extract stock symbols using regex"""

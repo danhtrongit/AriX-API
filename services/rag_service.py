@@ -22,9 +22,29 @@ class RAGService:
         
         # Initialize Qdrant client
         try:
-            self.qdrant = QdrantClient(host=self.qdrant_host, port=self.qdrant_port)
+            # Hỗ trợ cả local (host+port) và remote (URL)
+            if self.qdrant_host.startswith(('http://', 'https://')):
+                # Parse URL to extract host/port/scheme
+                from urllib.parse import urlparse
+                parsed = urlparse(self.qdrant_host)
+                host = parsed.hostname or parsed.netloc
+                port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+                use_https = (parsed.scheme == 'https')
+                
+                self.qdrant = QdrantClient(
+                    host=host,
+                    port=port,
+                    https=use_https,
+                    api_key=config.QDRANT_API_KEY,
+                    timeout=60,
+                    prefer_grpc=False
+                )
+                logger.info(f"Connected to Qdrant: {host}:{port} (https={use_https})")
+            else:
+                self.qdrant = QdrantClient(host=self.qdrant_host, port=self.qdrant_port)
+                logger.info(f"Connected to Qdrant at {self.qdrant_host}:{self.qdrant_port}")
         except Exception as e:
-            logger.error(f"Failed to connect to Qdrant at {self.qdrant_host}:{self.qdrant_port}: {e}")
+            logger.error(f"Failed to connect to Qdrant: {e}")
     
     def get_embedding(self, text: str):
         """Get text embedding from OpenAI API"""
