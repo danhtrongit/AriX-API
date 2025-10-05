@@ -34,7 +34,6 @@ def get_embedding(text: str):
 def fetch_company_data(ticker: str):
     base = f"https://proxy.iqx.vn/proxy/trading/api/iq-insight-service/v1/company/{ticker}"
     sections = [
-        "financial-statement/metrics",
         "financial-statement?section=CASH_FLOW",
         "financial-statement?section=INCOME_STATEMENT",
         "financial-statement?section=BALANCE_SHEET",
